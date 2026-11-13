@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="A cozy, simple drawing space for sketches, shapes, and ideas."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Create Draw</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Create Draw home">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <span>Create<span class="brand-light">Draw</span></span>
+        </a>
+        <div class="document-name">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="saveStatus" role="status" aria-live="polite">Ready to draw</span>
+        </div>
+        <div class="top-actions">
+          <button class="button button-quiet" id="undoButton" type="button" title="Undo (Ctrl+Z)" aria-label="Undo">
+            <span aria-hidden="true">↶</span><span class="action-label">Undo</span>
+          </button>
+          <button class="button button-quiet" id="redoButton" type="button" title="Redo (Ctrl+Y)" aria-label="Redo">
+            <span aria-hidden="true">↷</span><span class="action-label">Redo</span>
+          </button>
+          <button class="button button-primary" id="saveButton" type="button">
+            <span aria-hidden="true">↓</span> Save PNG
+          </button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="tool-panel" aria-label="Drawing tools">
+          <div class="panel-heading">
+            <span class="eyebrow">YOUR SPACE</span>
+            <h1>Make a mark.</h1>
+            <p>Pick a tool and let your ideas wander.</p>
+          </div>
+
+          <section class="control-group" aria-labelledby="toolsHeading">
+            <h2 id="toolsHeading" class="section-label">Tools</h2>
+            <div class="tool-grid">
+              <button class="tool-button is-selected" type="button" data-tool="brush" aria-pressed="true" aria-label="Brush">
+                <span aria-hidden="true">✎</span><span>Brush</span>
+              </button>
+              <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser">
+                <span aria-hidden="true">▰</span><span>Eraser</span>
+              </button>
+              <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="Line">
+                <span aria-hidden="true">╱</span><span>Line</span>
+              </button>
+              <button class="tool-button" type="button" data-tool="rectangle" aria-pressed="false" aria-label="Rectangle">
+                <span aria-hidden="true">▱</span><span>Rectangle</span>
+              </button>
+              <button class="tool-button" type="button" data-tool="ellipse" aria-pressed="false" aria-label="Ellipse">
+                <span aria-hidden="true">◯</span><span>Ellipse</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="control-group" aria-labelledby="styleHeading">
+            <h2 id="styleHeading" class="section-label">Your style</h2>
+            <label class="control-label" for="colorInput">
+              <span>Color</span>
+              <span id="colorValue" class="color-value">#34343D</span>
+            </label>
+            <div class="color-control">
+              <input id="colorInput" type="color" value="#34343d" aria-label="Brush color" />
+              <div class="swatches" aria-label="Quick colors">
+                <button class="swatch" type="button" data-color="#34343d" style="--swatch-color: #34343d" aria-label="Charcoal"></button>
+                <button class="swatch" type="button" data-color="#e27763" style="--swatch-color: #e27763" aria-label="Coral"></button>
+                <button class="swatch" type="button" data-color="#e6b94f" style="--swatch-color: #e6b94f" aria-label="Sunshine"></button>
+                <button class="swatch" type="button" data-color="#5a9d8b" style="--swatch-color: #5a9d8b" aria-label="Sage"></button>
+                <button class="swatch" type="button" data-color="#7187c8" style="--swatch-color: #7187c8" aria-label="Periwinkle"></button>
+              </div>
+            </div>
+            <label class="control-label range-label" for="sizeInput">
+              <span>Brush size</span><output id="sizeValue" for="sizeInput">6 px</output>
+            </label>
+            <input id="sizeInput" class="range-input" type="range" min="1" max="48" value="6" />
+            <label class="check-row" for="fillInput">
+              <input id="fillInput" type="checkbox" />
+              <span class="custom-check" aria-hidden="true"></span>
+              Fill shapes
+            </label>
+          </section>
+
+          <section class="control-group background-group" aria-labelledby="canvasHeading">
+            <h2 id="canvasHeading" class="section-label">Canvas</h2>
+            <label class="control-label" for="backgroundInput">
+              <span>Paper color</span>
+            </label>
+            <div class="paper-control">
+              <input id="backgroundInput" type="color" value="#fffdf9" aria-label="Canvas background color" />
+              <span>Change your canvas background</span>
+            </div>
+            <label class="upload-button" for="traceInput">
+              <span aria-hidden="true">＋</span> Add tracing image
+            </label>
+            <input id="traceInput" class="visually-hidden" type="file" accept="image/*" />
+            <button class="text-button" id="removeTraceButton" type="button" hidden>Remove tracing image</button>
+          </section>
+
+          <button class="clear-button" id="clearButton" type="button">
+            <span aria-hidden="true">⌫</span> Clear canvas
+          </button>
+        </aside>
+
+        <section class="canvas-area" aria-label="Drawing canvas">
+          <div class="canvas-toolbar">
+            <div>
+              <span class="eyebrow">UNTITLED CANVAS</span>
+              <p>There are no wrong lines here.</p>
+            </div>
+            <span class="canvas-size">1200 × 800</span>
+          </div>
+          <div class="canvas-frame">
+            <div class="canvas-paper" id="canvasPaper">
+              <img id="traceImage" class="trace-image" alt="Tracing reference" hidden />
+              <canvas id="drawingCanvas" width="1200" height="800" aria-label="Blank drawing canvas. Use a pointer to draw.">
+                Your browser does not support canvas drawing.
+              </canvas>
+            </div>
+          </div>
+          <div class="canvas-footer">
+            <p>Tip: Hold and drag to draw. Your work saves automatically on this device.</p>
+            <span id="canvasMessage" role="status" aria-live="polite"></span>
+          </div>
+        </section>
+      </main>
+      <footer>Made for doodles, daydreams, and everything in between.</footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
