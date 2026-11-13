@@ -21,6 +21,7 @@ function getCanvasContext(element: HTMLCanvasElement): CanvasRenderingContext2D 
 const context = getCanvasContext(canvas);
 
 const saveStatus = getRequiredElement<HTMLElement>("#saveStatus");
+const appShell = getRequiredElement<HTMLDivElement>(".app-shell");
 const canvasMessage = getRequiredElement<HTMLElement>("#canvasMessage");
 const colorInput = getRequiredElement<HTMLInputElement>("#colorInput");
 const colorValue = getRequiredElement<HTMLElement>("#colorValue");
@@ -36,6 +37,9 @@ const undoButton = getRequiredElement<HTMLButtonElement>("#undoButton");
 const redoButton = getRequiredElement<HTMLButtonElement>("#redoButton");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clearButton");
 const saveButton = getRequiredElement<HTMLButtonElement>("#saveButton");
+const minimizeButton = getRequiredElement<HTMLButtonElement>("#minimizeButton");
+const minimizedWindow = getRequiredElement<HTMLDivElement>("#minimizedWindow");
+const restoreButton = getRequiredElement<HTMLButtonElement>("#restoreButton");
 
 const storageKey = "create-draw-canvas-v1";
 const maxHistoryEntries = 30;
@@ -353,6 +357,18 @@ saveButton.addEventListener("click", () => {
   downloadLink.href = exportCanvas.toDataURL("image/png");
   downloadLink.click();
   announce("Your drawing downloaded as a PNG.");
+});
+
+minimizeButton.addEventListener("click", () => {
+  appShell.classList.add("is-minimized");
+  minimizedWindow.hidden = false;
+  restoreButton.focus();
+});
+
+restoreButton.addEventListener("click", () => {
+  appShell.classList.remove("is-minimized");
+  minimizedWindow.hidden = true;
+  minimizeButton.focus();
 });
 
 colorInput.addEventListener("input", () => {

@@ -15,10 +15,11 @@ A personal drawing app built in this repository, inspired by the tools and ideas
 - Undo and redo, including keyboard shortcuts
 - Change the paper color
 - Add or remove an image as a tracing guide
+- Minimize the app into a compact restore control
 - Automatically save the current drawing in this browser
 - Download the drawing as a PNG
 
-The drawing is saved in browser storage on this device. Download it as a PNG to keep a separate copy.
+The minimize button collapses the drawing app inside the page; use your browser or operating system controls to minimize or close the browser window itself. The drawing is saved in browser storage on this device. Download it as a PNG to keep a separate copy.
 
 ## Build
 

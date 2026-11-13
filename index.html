@@ -31,6 +31,15 @@
           <button class="button button-primary" id="saveButton" type="button">
             <span aria-hidden="true">↓</span> Save PNG
           </button>
+          <button
+            class="button button-quiet minimize-button"
+            id="minimizeButton"
+            type="button"
+            title="Minimize drawing app"
+            aria-label="Minimize drawing app"
+          >
+            <span aria-hidden="true">−</span><span class="action-label">Minimize</span>
+          </button>
         </div>
       </header>
 
@@ -134,6 +143,11 @@
         </section>
       </main>
       <footer>Made for doodles, daydreams, and everything in between.</footer>
+      <div class="minimized-window" id="minimizedWindow" hidden>
+        <span class="brand-mark" aria-hidden="true">✳</span>
+        <span class="minimized-title">Create Draw</span>
+        <button class="restore-button" id="restoreButton" type="button">Restore</button>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

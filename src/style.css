@@ -108,6 +108,69 @@ a:focus-visible {
   margin-left: auto;
 }
 
+.minimize-button > span:first-child {
+  font-size: 19px;
+  line-height: 1;
+}
+
+.app-shell.is-minimized {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 1000;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.app-shell.is-minimized > :not(.minimized-window) {
+  display: none;
+}
+
+.minimized-window {
+  display: none;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px 9px 13px;
+  border: 1px solid rgba(89, 84, 76, 0.12);
+  border-radius: 12px;
+  background: #fffdf9;
+  box-shadow: 0 8px 28px rgba(67, 60, 49, 0.16);
+}
+
+.app-shell.is-minimized .minimized-window:not([hidden]) {
+  display: flex;
+}
+
+.minimized-window .brand-mark {
+  font-size: 20px;
+}
+
+.minimized-title {
+  color: var(--ink);
+  font-family: "Manrope", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.restore-button {
+  min-height: 31px;
+  margin-left: 5px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--ink);
+  color: white;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.restore-button:hover {
+  background: #50515a;
+}
+
 .button {
   min-height: 38px;
   border: 0;
