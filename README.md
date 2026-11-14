@@ -16,7 +16,7 @@ You can also open `index.html` with VS Code Live Server. The browser scripts are
 - Hand tool, Space-drag panning, and touch pinch navigation
 - Zoom controls from 25% to 400%, cursor-centered Ctrl/Command-wheel zoom, Fit, Center, and Reset
 - Collapsible mini-map for navigating the artwork at high zoom
-- Pencil, marker, and highlighter brush presets, adjustable size and opacity, and optional shape fill
+- Eleven simulated art-supply brush styles, including pencil, fine liner, fountain pen, calligraphy, watercolor, charcoal, crayon, paintbrush, and airbrush, with adjustable size and opacity
 - Eyedropper sampling from visible artwork, tracing guide, and paper color
 - Paint bucket with adjustable tolerance and undo/redo support
 - Memory-conscious Undo/Redo history, including keyboard shortcuts

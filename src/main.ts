@@ -1,5 +1,10 @@
 import { floodFillPixels } from "./floodFill.js";
 import { MAX_ZOOM, MIN_ZOOM, Viewport } from "./core/Viewport.js";
+import {
+  BRUSH_PRESETS,
+  drawBrushSegment,
+  type BrushPreset,
+} from "./tools/BrushStrokes.js";
 
 type Tool =
   | "brush"
@@ -117,6 +122,7 @@ let isFilling = false;
 let isHistoryRestoring = false;
 let isSpaceHandActive = false;
 let startPoint = { x: 0, y: 0 };
+let previousBrushPoint: { x: number; y: number } | null = null;
 let lastPanPoint: { x: number; y: number } | null = null;
 let panPointerId: number | null = null;
 let drawingPointerId: number | null = null;
@@ -221,6 +227,42 @@ function getViewportSize(): { width: number; height: number } {
 
 function getArtworkSize(): { width: number; height: number } {
   return { width: canvas.width, height: canvas.height };
+}
+
+function getSelectedBrushPreset(): BrushPreset {
+  const selectedPreset = brushPresetInput.value;
+  for (const preset of BRUSH_PRESETS) {
+    if (preset === selectedPreset) return preset;
+  }
+  throw new Error(`Unknown brush style: ${selectedPreset}`);
+}
+
+function drawActiveStrokeSegment(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): void {
+  if (activeTool === "brush") {
+    drawBrushSegment(context, start, end, {
+      preset: getSelectedBrushPreset(),
+      width: Number(sizeInput.value),
+      color: colorInput.value,
+      opacity: Number(brushOpacityInput.value) / 100,
+    });
+    return;
+  }
+
+  applyBrushStyle();
+  context.beginPath();
+  context.moveTo(start.x, start.y);
+  context.lineTo(
+    Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
+      ? start.x + 0.01
+      : end.x,
+    Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
+      ? start.y + 0.01
+      : end.y,
+  );
+  context.stroke();
 }
 
 function applyViewport(): void {
@@ -659,6 +701,7 @@ function interruptDrawing(): void {
   if (gestureSnapshot) context.putImageData(gestureSnapshot, 0, 0);
   isDrawing = false;
   drawingPointerId = null;
+  previousBrushPoint = null;
   drawingSnapshot = null;
   gestureSnapshot = null;
   context.globalCompositeOperation = "source-over";
@@ -734,18 +777,16 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
   drawingPointerId = event.pointerId;
   startPoint = point;
   gestureSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
-  applyBrushStyle();
 
   if (activeTool !== "brush" && activeTool !== "eraser") {
+    applyBrushStyle();
     drawingSnapshot = gestureSnapshot;
     return;
   }
 
   context.globalCompositeOperation = activeTool === "eraser" ? "destination-out" : "source-over";
-  context.beginPath();
-  context.moveTo(startPoint.x, startPoint.y);
-  context.lineTo(startPoint.x + 0.1, startPoint.y + 0.1);
-  context.stroke();
+  previousBrushPoint = startPoint;
+  drawActiveStrokeSegment(startPoint, startPoint);
 });
 
 canvas.addEventListener("pointermove", (event: PointerEvent) => {
@@ -788,8 +829,10 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     return;
   }
 
-  context.lineTo(point.x, point.y);
-  context.stroke();
+  if (previousBrushPoint) {
+    drawActiveStrokeSegment(previousBrushPoint, point);
+    previousBrushPoint = point;
+  }
 });
 
 canvas.addEventListener("pointerup", (event: PointerEvent) => {
@@ -814,9 +857,15 @@ canvas.addEventListener("pointerup", (event: PointerEvent) => {
 
   if (drawingSnapshot) {
     drawShape(getCanvasPoint(event));
+  } else if (previousBrushPoint) {
+    const point = getCanvasPoint(event);
+    if (Math.hypot(point.x - previousBrushPoint.x, point.y - previousBrushPoint.y) > 0.01) {
+      drawActiveStrokeSegment(previousBrushPoint, point);
+    }
   }
   isDrawing = false;
   drawingPointerId = null;
+  previousBrushPoint = null;
   drawingSnapshot = null;
   gestureSnapshot = null;
   context.globalCompositeOperation = "source-over";

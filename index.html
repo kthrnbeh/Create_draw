@@ -147,9 +147,21 @@
               <span>Brush style</span>
             </label>
             <select id="brushPreset" class="control-select">
-              <option value="pencil">Pencil</option>
-              <option value="marker" selected>Marker</option>
-              <option value="highlighter">Highlighter</option>
+              <optgroup label="Drawing and ink">
+                <option value="pencil">Graphite pencil</option>
+                <option value="fine-liner">Fine liner</option>
+                <option value="marker" selected>Felt marker</option>
+                <option value="fountain-pen">Fountain pen</option>
+                <option value="calligraphy">Calligraphy nib</option>
+                <option value="highlighter">Highlighter</option>
+              </optgroup>
+              <optgroup label="Paint and texture">
+                <option value="watercolor">Watercolor</option>
+                <option value="paintbrush">Paintbrush</option>
+                <option value="airbrush">Airbrush</option>
+                <option value="charcoal">Charcoal</option>
+                <option value="crayon">Crayon</option>
+              </optgroup>
             </select>
             <label class="control-label range-label opacity-label" for="brushOpacity">
               <span>Opacity</span><output id="opacityValue" for="brushOpacity">100%</output>
