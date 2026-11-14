@@ -73,6 +73,12 @@
                   <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser">
                     <span aria-hidden="true">▰</span><span>Eraser</span>
                   </button>
+                  <button class="tool-button" type="button" data-tool="eyedropper" aria-pressed="false" aria-label="Eyedropper">
+                    <span aria-hidden="true">◉</span><span>Eyedropper</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="bucket" aria-pressed="false" aria-label="Paint bucket">
+                    <span aria-hidden="true">▤</span><span>Bucket</span>
+                  </button>
                   <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="Line">
                     <span aria-hidden="true">╱</span><span>Line</span>
                   </button>
@@ -103,13 +109,22 @@
                 </div>
               </div>
             </div>
+            <div class="tool-specific-settings" id="bucketSettings" hidden>
+              <label class="control-label range-label" for="fillTolerance">
+                <span>Fill tolerance</span><output id="fillToleranceValue" for="fillTolerance">18</output>
+              </label>
+              <input id="fillTolerance" class="range-input" type="range" min="0" max="100" value="18" />
+            </div>
           </section>
 
           <section class="control-group" aria-labelledby="styleHeading">
             <h2 id="styleHeading" class="section-label">Your style</h2>
             <label class="control-label" for="colorInput">
               <span>Color</span>
-              <span id="colorValue" class="color-value">#34343D</span>
+              <span class="color-readout">
+                <span id="colorPreview" class="color-preview" aria-hidden="true"></span>
+                <span id="colorValue" class="color-value">#34343D</span>
+              </span>
             </label>
             <div class="color-control">
               <input id="colorInput" type="color" value="#34343d" aria-label="Brush color" />
@@ -125,6 +140,18 @@
               <span>Brush size</span><output id="sizeValue" for="sizeInput">6 px</output>
             </label>
             <input id="sizeInput" class="range-input" type="range" min="1" max="48" value="6" />
+            <label class="control-label preset-label" for="brushPreset">
+              <span>Brush style</span>
+            </label>
+            <select id="brushPreset" class="control-select">
+              <option value="pencil">Pencil</option>
+              <option value="marker" selected>Marker</option>
+              <option value="highlighter">Highlighter</option>
+            </select>
+            <label class="control-label range-label opacity-label" for="brushOpacity">
+              <span>Opacity</span><output id="opacityValue" for="brushOpacity">100%</output>
+            </label>
+            <input id="brushOpacity" class="range-input" type="range" min="0" max="100" value="100" />
             <label class="check-row" for="fillInput">
               <input id="fillInput" type="checkbox" />
               <span class="custom-check" aria-hidden="true"></span>

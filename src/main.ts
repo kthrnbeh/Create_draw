@@ -1,6 +1,10 @@
+import { floodFillPixels } from "./floodFill.js";
+
 type Tool =
   | "brush"
   | "eraser"
+  | "eyedropper"
+  | "bucket"
   | "line"
   | "rectangle"
   | "circle"
@@ -28,6 +32,10 @@ function getCanvasContext(element: HTMLCanvasElement): CanvasRenderingContext2D 
   return drawingContext;
 }
 const context = getCanvasContext(canvas);
+const colorSampleCanvas = document.createElement("canvas");
+colorSampleCanvas.width = canvas.width;
+colorSampleCanvas.height = canvas.height;
+const colorSampleContext = getCanvasContext(colorSampleCanvas);
 
 const saveStatus = getRequiredElement<HTMLElement>("#saveStatus");
 const appShell = getRequiredElement<HTMLDivElement>(".app-shell");
@@ -35,11 +43,18 @@ const toolPicker = getRequiredElement<HTMLDivElement>("#toolPicker");
 const toolPickerButton = getRequiredElement<HTMLButtonElement>("#toolPickerButton");
 const toolPickerPanel = getRequiredElement<HTMLDivElement>("#toolPickerPanel");
 const selectedToolName = getRequiredElement<HTMLSpanElement>("#selectedToolName");
+const bucketSettings = getRequiredElement<HTMLDivElement>("#bucketSettings");
 const canvasMessage = getRequiredElement<HTMLElement>("#canvasMessage");
 const colorInput = getRequiredElement<HTMLInputElement>("#colorInput");
 const colorValue = getRequiredElement<HTMLElement>("#colorValue");
+const colorPreview = getRequiredElement<HTMLElement>("#colorPreview");
 const sizeInput = getRequiredElement<HTMLInputElement>("#sizeInput");
 const sizeValue = getRequiredElement<HTMLOutputElement>("#sizeValue");
+const brushPresetInput = getRequiredElement<HTMLSelectElement>("#brushPreset");
+const brushOpacityInput = getRequiredElement<HTMLInputElement>("#brushOpacity");
+const opacityValue = getRequiredElement<HTMLOutputElement>("#opacityValue");
+const fillToleranceInput = getRequiredElement<HTMLInputElement>("#fillTolerance");
+const fillToleranceValue = getRequiredElement<HTMLOutputElement>("#fillToleranceValue");
 const fillInput = getRequiredElement<HTMLInputElement>("#fillInput");
 const backgroundInput = getRequiredElement<HTMLInputElement>("#backgroundInput");
 const canvasPaper = getRequiredElement<HTMLElement>("#canvasPaper");
@@ -56,11 +71,14 @@ const restoreButton = getRequiredElement<HTMLButtonElement>("#restoreButton");
 
 const storageKey = "create-draw-canvas-v1";
 const maxHistoryEntries = 30;
+const maxHistoryCharacters = 24 * 1024 * 1024;
 const toolButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-tool]"));
 const colorSwatches = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-color]"));
 const toolLabels: Record<Tool, string> = {
   brush: "Brush",
   eraser: "Eraser",
+  eyedropper: "Eyedropper",
+  bucket: "Paint Bucket",
   line: "Line",
   rectangle: "Rectangle",
   circle: "Circle",
@@ -78,14 +96,18 @@ interface SavedDrawing {
 }
 
 let activeTool: Tool = "brush";
+let lastDrawingTool: Tool = "brush";
 let isDrawing = false;
+let isFilling = false;
+let isHistoryRestoring = false;
 let startPoint = { x: 0, y: 0 };
 let drawingSnapshot: ImageData | null = null;
 let gestureSnapshot: ImageData | null = null;
 let traceObjectUrl: string | null = null;
 let saveTimer: number | undefined;
-let history: ImageData[] = [];
+let history: string[] = [];
 let historyIndex = -1;
+let historyCharacters = 0;
 
 context.lineCap = "round";
 context.lineJoin = "round";
@@ -100,16 +122,28 @@ function announce(message: string): void {
 }
 
 function updateHistoryButtons(): void {
-  undoButton.disabled = historyIndex <= 0;
-  redoButton.disabled = historyIndex >= history.length - 1;
+  const isBusy = isFilling || isHistoryRestoring;
+  undoButton.disabled = isBusy || historyIndex <= 0;
+  redoButton.disabled = isBusy || historyIndex >= history.length - 1;
+  clearButton.disabled = isBusy;
+  saveButton.disabled = isBusy;
 }
 
 function rememberCanvas(): void {
-  history = history.slice(0, historyIndex + 1);
-  history.push(context.getImageData(0, 0, canvas.width, canvas.height));
+  const snapshot = canvas.toDataURL("image/png");
+  if (history[historyIndex] === snapshot) return;
 
-  if (history.length > maxHistoryEntries) {
-    history.shift();
+  history = history.slice(0, historyIndex + 1);
+  historyCharacters = history.reduce((total, entry) => total + entry.length, 0);
+  history.push(snapshot);
+  historyCharacters += snapshot.length;
+
+  while (
+    history.length > 1 &&
+    (history.length > maxHistoryEntries || historyCharacters > maxHistoryCharacters)
+  ) {
+    const removed = history.shift();
+    if (removed) historyCharacters -= removed.length;
   }
 
   historyIndex = history.length - 1;
@@ -117,14 +151,29 @@ function rememberCanvas(): void {
   scheduleSave();
 }
 
-function restoreCanvas(index: number): void {
-  const image = history[index];
-  if (!image) return;
+async function restoreCanvas(index: number): Promise<void> {
+  if (isFilling || isHistoryRestoring || index < 0 || index >= history.length) return;
+  const snapshot = history[index];
+  if (!snapshot) return;
 
-  context.putImageData(image, 0, 0);
-  historyIndex = index;
+  isHistoryRestoring = true;
   updateHistoryButtons();
-  scheduleSave();
+
+  try {
+    const image = new Image();
+    image.src = snapshot;
+    await image.decode();
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    historyIndex = index;
+    scheduleSave();
+  } catch (error) {
+    announce("Couldn't restore that history step.");
+    console.error("Could not restore canvas history.", error);
+  } finally {
+    isHistoryRestoring = false;
+    updateHistoryButtons();
+  }
 }
 
 function getCanvasPoint(event: PointerEvent): { x: number; y: number } {
@@ -136,9 +185,26 @@ function getCanvasPoint(event: PointerEvent): { x: number; y: number } {
 }
 
 function applyBrushStyle(): void {
-  context.lineWidth = Number(sizeInput.value);
+  let widthMultiplier = 1;
+  let opacityMultiplier = 1;
+
+  if (activeTool === "brush") {
+    if (brushPresetInput.value === "pencil") {
+      widthMultiplier = 0.75;
+      opacityMultiplier = 0.58;
+    } else if (brushPresetInput.value === "highlighter") {
+      widthMultiplier = 1.8;
+      opacityMultiplier = 0.25;
+    }
+  }
+
+  context.lineWidth = Number(sizeInput.value) * widthMultiplier;
   context.strokeStyle = colorInput.value;
   context.fillStyle = colorInput.value;
+  context.globalAlpha =
+    activeTool === "eraser"
+      ? 1
+      : (Number(brushOpacityInput.value) / 100) * opacityMultiplier;
 }
 
 function drawShape(point: { x: number; y: number }): void {
@@ -256,6 +322,8 @@ function drawShape(point: { x: number; y: number }): void {
     }
     case "brush":
     case "eraser":
+    case "eyedropper":
+    case "bucket":
       return;
   }
 
@@ -284,9 +352,90 @@ function drawImageContained(
   );
 }
 
+function colorToRgba(color: string): [number, number, number, number] {
+  return [
+    Number.parseInt(color.slice(1, 3), 16),
+    Number.parseInt(color.slice(3, 5), 16),
+    Number.parseInt(color.slice(5, 7), 16),
+    255,
+  ];
+}
+
+function updateSelectedColor(color: string): void {
+  colorInput.value = color;
+  colorValue.textContent = color.toUpperCase();
+  colorPreview.style.backgroundColor = color;
+}
+
+function sampleVisibleColor(point: { x: number; y: number }): string {
+  const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(point.x)));
+  const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(point.y)));
+
+  colorSampleContext.clearRect(0, 0, canvas.width, canvas.height);
+  colorSampleContext.fillStyle = backgroundInput.value;
+  colorSampleContext.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
+    colorSampleContext.globalAlpha = 0.28;
+    drawImageContained(colorSampleContext, traceImage, canvas.width, canvas.height);
+    colorSampleContext.globalAlpha = 1;
+  }
+
+  colorSampleContext.drawImage(canvas, 0, 0);
+  const pixel = colorSampleContext.getImageData(x, y, 1, 1).data;
+  return `#${[pixel[0]!, pixel[1]!, pixel[2]!]
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> {
+  if (isFilling || isHistoryRestoring) return;
+
+  isFilling = true;
+  canvas.setAttribute("aria-busy", "true");
+  updateHistoryButtons();
+
+  try {
+    const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(point.x)));
+    const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(point.y)));
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const fillColor = colorToRgba(colorInput.value);
+    const tolerance = Number(fillToleranceInput.value);
+    const changed = await floodFillPixels(
+      imageData.data,
+      imageData.width,
+      imageData.height,
+      x,
+      y,
+      fillColor,
+      tolerance,
+    );
+
+    if (!changed) {
+      announce("That area already matches the selected color.");
+      return;
+    }
+
+    context.putImageData(imageData, 0, 0);
+    rememberCanvas();
+    announce("Area filled.");
+  } catch (error) {
+    announce("Couldn't fill that area.");
+    console.error("Paint bucket fill failed.", error);
+  } finally {
+    isFilling = false;
+    canvas.removeAttribute("aria-busy");
+    updateHistoryButtons();
+  }
+}
+
 function setActiveTool(tool: Tool): void {
   activeTool = tool;
+  if (tool !== "eyedropper" && tool !== "bucket") {
+    lastDrawingTool = tool;
+  }
   selectedToolName.textContent = toolLabels[tool];
+  bucketSettings.hidden = tool !== "bucket";
   closeToolPicker();
 
   for (const button of toolButtons) {
@@ -296,7 +445,12 @@ function setActiveTool(tool: Tool): void {
   }
 
   canvas.classList.toggle("eraser-cursor", tool === "eraser");
-  canvas.classList.toggle("shape-cursor", tool !== "brush" && tool !== "eraser");
+  canvas.classList.toggle("eyedropper-cursor", tool === "eyedropper");
+  canvas.classList.toggle("bucket-cursor", tool === "bucket");
+  canvas.classList.toggle(
+    "shape-cursor",
+    tool !== "brush" && tool !== "eraser" && tool !== "eyedropper" && tool !== "bucket",
+  );
 }
 
 function closeToolPicker(): void {
@@ -368,7 +522,9 @@ function loadSavedDrawing(): void {
     const image = new Image();
     image.onload = () => {
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      history = [context.getImageData(0, 0, canvas.width, canvas.height)];
+      const snapshot = canvas.toDataURL("image/png");
+      history = [snapshot];
+      historyCharacters = snapshot.length;
       historyIndex = 0;
       updateHistoryButtons();
       updateSaveStatus("Your last drawing is back");
@@ -396,12 +552,32 @@ for (const button of toolButtons) {
 }
 
 canvas.addEventListener("pointerdown", (event: PointerEvent) => {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || isFilling || isHistoryRestoring) return;
 
   event.preventDefault();
+  const point = getCanvasPoint(event);
+
+  if (activeTool === "eyedropper") {
+    try {
+      const sampledColor = sampleVisibleColor(point);
+      updateSelectedColor(sampledColor);
+      setActiveTool(lastDrawingTool);
+      announce(`Color sampled: ${sampledColor.toUpperCase()}`);
+    } catch (error) {
+      announce("Couldn't sample the color at that point.");
+      console.error("Eyedropper color sampling failed.", error);
+    }
+    return;
+  }
+
+  if (activeTool === "bucket") {
+    void fillCanvasRegion(point);
+    return;
+  }
+
   canvas.setPointerCapture(event.pointerId);
   isDrawing = true;
-  startPoint = getCanvasPoint(event);
+  startPoint = point;
   gestureSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
   applyBrushStyle();
 
@@ -440,6 +616,7 @@ canvas.addEventListener("pointerup", (event: PointerEvent) => {
   drawingSnapshot = null;
   gestureSnapshot = null;
   context.globalCompositeOperation = "source-over";
+  context.globalAlpha = 1;
   rememberCanvas();
 });
 
@@ -451,23 +628,26 @@ canvas.addEventListener("pointercancel", () => {
   drawingSnapshot = null;
   gestureSnapshot = null;
   context.globalCompositeOperation = "source-over";
+  context.globalAlpha = 1;
 });
 
 undoButton.addEventListener("click", () => {
-  if (historyIndex > 0) restoreCanvas(historyIndex - 1);
+  if (historyIndex > 0) void restoreCanvas(historyIndex - 1);
 });
 
 redoButton.addEventListener("click", () => {
-  if (historyIndex < history.length - 1) restoreCanvas(historyIndex + 1);
+  if (historyIndex < history.length - 1) void restoreCanvas(historyIndex + 1);
 });
 
 clearButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring) return;
   context.clearRect(0, 0, canvas.width, canvas.height);
   rememberCanvas();
   announce("Canvas cleared.");
 });
 
 saveButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring) return;
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = canvas.width;
   exportCanvas.height = canvas.height;
@@ -508,17 +688,24 @@ restoreButton.addEventListener("click", () => {
 });
 
 colorInput.addEventListener("input", () => {
-  colorValue.textContent = colorInput.value.toUpperCase();
+  updateSelectedColor(colorInput.value);
 });
 
 for (const swatch of colorSwatches) {
   swatch.addEventListener("click", () => {
     const color = swatch.dataset.color;
     if (!color) return;
-    colorInput.value = color;
-    colorValue.textContent = color.toUpperCase();
+    updateSelectedColor(color);
   });
 }
+
+brushOpacityInput.addEventListener("input", () => {
+  opacityValue.value = `${brushOpacityInput.value}%`;
+});
+
+fillToleranceInput.addEventListener("input", () => {
+  fillToleranceValue.value = fillToleranceInput.value;
+});
 
 sizeInput.addEventListener("input", () => {
   sizeValue.value = `${sizeInput.value} px`;
@@ -573,14 +760,17 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key.toLowerCase() === "z") {
     event.preventDefault();
     if (event.shiftKey) {
-      if (historyIndex < history.length - 1) restoreCanvas(historyIndex + 1);
+      if (historyIndex < history.length - 1) void restoreCanvas(historyIndex + 1);
     } else if (historyIndex > 0) {
-      restoreCanvas(historyIndex - 1);
+      void restoreCanvas(historyIndex - 1);
     }
   } else if (event.key.toLowerCase() === "y" && historyIndex < history.length - 1) {
     event.preventDefault();
-    restoreCanvas(historyIndex + 1);
+    void restoreCanvas(historyIndex + 1);
   }
 });
 
+updateSelectedColor(colorInput.value);
+opacityValue.value = `${brushOpacityInput.value}%`;
+fillToleranceValue.value = fillToleranceInput.value;
 loadSavedDrawing();
