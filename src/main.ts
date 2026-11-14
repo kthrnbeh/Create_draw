@@ -1,5 +1,3 @@
-import "./style.css";
-
 type Tool = "brush" | "eraser" | "line" | "rectangle" | "ellipse";
 
 function getRequiredElement<T extends Element>(selector: string): T {

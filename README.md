@@ -6,7 +6,9 @@ A personal drawing app built in this repository, inspired by the tools and ideas
 
 1. Install [Node.js](https://nodejs.org/).
 2. In this folder, run `npm install`.
-3. Run `npm run dev` and open the local address Vite prints.
+3. Run `npm run dev` and open the local address Vite prints. It does not open a browser window automatically.
+
+You can also open `index.html` with VS Code Live Server. The browser script is compiled from `src/main.ts`; after editing that file, run `npm run compile` to refresh `browser-build/main.js`.
 
 ## Current tools
 

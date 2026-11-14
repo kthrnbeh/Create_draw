@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "rootDir": "./src",
+    "outDir": "./browser-build",
+    "sourceMap": false,
+    "declaration": false,
+    "tsBuildInfoFile": "./browser-build/tsconfig.tsbuildinfo"
+  }
+}
