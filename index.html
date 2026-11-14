@@ -54,22 +54,54 @@
 
           <section class="control-group" aria-labelledby="toolsHeading">
             <h2 id="toolsHeading" class="section-label">Tools</h2>
-            <div class="tool-grid">
-              <button class="tool-button is-selected" type="button" data-tool="brush" aria-pressed="true" aria-label="Brush">
-                <span aria-hidden="true">✎</span><span>Brush</span>
+            <div class="tool-picker" id="toolPicker">
+              <button
+                class="tool-picker-toggle"
+                id="toolPickerButton"
+                type="button"
+                aria-expanded="false"
+                aria-controls="toolPickerPanel"
+              >
+                <span id="selectedToolName">Brush</span>
+                <span class="picker-chevron" aria-hidden="true">▾</span>
               </button>
-              <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser">
-                <span aria-hidden="true">▰</span><span>Eraser</span>
-              </button>
-              <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="Line">
-                <span aria-hidden="true">╱</span><span>Line</span>
-              </button>
-              <button class="tool-button" type="button" data-tool="rectangle" aria-pressed="false" aria-label="Rectangle">
-                <span aria-hidden="true">▱</span><span>Rectangle</span>
-              </button>
-              <button class="tool-button" type="button" data-tool="ellipse" aria-pressed="false" aria-label="Ellipse">
-                <span aria-hidden="true">◯</span><span>Ellipse</span>
-              </button>
+              <div class="tool-picker-panel" id="toolPickerPanel" hidden>
+                <div class="tool-grid">
+                  <button class="tool-button is-selected" type="button" data-tool="brush" aria-pressed="true" aria-label="Brush">
+                    <span aria-hidden="true">✎</span><span>Brush</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false" aria-label="Eraser">
+                    <span aria-hidden="true">▰</span><span>Eraser</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="Line">
+                    <span aria-hidden="true">╱</span><span>Line</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="rectangle" aria-pressed="false" aria-label="Rectangle">
+                    <span aria-hidden="true">▱</span><span>Rectangle</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="circle" aria-pressed="false" aria-label="Circle">
+                    <span aria-hidden="true">◯</span><span>Circle</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="triangle" aria-pressed="false" aria-label="Triangle">
+                    <span aria-hidden="true">△</span><span>Triangle</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="oval" aria-pressed="false" aria-label="Oval">
+                    <span aria-hidden="true">⬭</span><span>Oval</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="arrow" aria-pressed="false" aria-label="Arrow">
+                    <span aria-hidden="true">➜</span><span>Arrow</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="star" aria-pressed="false" aria-label="Star">
+                    <span aria-hidden="true">★</span><span>Star</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="heart" aria-pressed="false" aria-label="Heart">
+                    <span aria-hidden="true">♥</span><span>Heart</span>
+                  </button>
+                  <button class="tool-button" type="button" data-tool="hexagon" aria-pressed="false" aria-label="Hexagon">
+                    <span aria-hidden="true">⬡</span><span>Hexagon</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 

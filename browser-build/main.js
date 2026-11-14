@@ -16,6 +16,10 @@ function getCanvasContext(element) {
 const context = getCanvasContext(canvas);
 const saveStatus = getRequiredElement("#saveStatus");
 const appShell = getRequiredElement(".app-shell");
+const toolPicker = getRequiredElement("#toolPicker");
+const toolPickerButton = getRequiredElement("#toolPickerButton");
+const toolPickerPanel = getRequiredElement("#toolPickerPanel");
+const selectedToolName = getRequiredElement("#selectedToolName");
 const canvasMessage = getRequiredElement("#canvasMessage");
 const colorInput = getRequiredElement("#colorInput");
 const colorValue = getRequiredElement("#colorValue");
@@ -38,6 +42,19 @@ const storageKey = "create-draw-canvas-v1";
 const maxHistoryEntries = 30;
 const toolButtons = Array.from(document.querySelectorAll("[data-tool]"));
 const colorSwatches = Array.from(document.querySelectorAll("[data-color]"));
+const toolLabels = {
+    brush: "Brush",
+    eraser: "Eraser",
+    line: "Line",
+    rectangle: "Rectangle",
+    circle: "Circle",
+    triangle: "Triangle",
+    oval: "Oval",
+    arrow: "Arrow",
+    star: "Star",
+    heart: "Heart",
+    hexagon: "Hexagon",
+};
 let activeTool = "brush";
 let isDrawing = false;
 let startPoint = { x: 0, y: 0 };
@@ -99,19 +116,89 @@ function drawShape(point) {
     applyBrushStyle();
     context.globalCompositeOperation = "source-over";
     context.beginPath();
-    if (activeTool === "line") {
-        context.moveTo(startPoint.x, startPoint.y);
-        context.lineTo(point.x, point.y);
+    const width = point.x - startPoint.x;
+    const height = point.y - startPoint.y;
+    switch (activeTool) {
+        case "line":
+            context.moveTo(startPoint.x, startPoint.y);
+            context.lineTo(point.x, point.y);
+            break;
+        case "rectangle":
+            context.rect(startPoint.x, startPoint.y, width, height);
+            break;
+        case "circle":
+            context.arc(startPoint.x, startPoint.y, Math.hypot(width, height), 0, Math.PI * 2);
+            break;
+        case "triangle":
+            context.moveTo(startPoint.x + width / 2, startPoint.y);
+            context.lineTo(startPoint.x, point.y);
+            context.lineTo(point.x, point.y);
+            context.closePath();
+            break;
+        case "oval":
+            context.ellipse(startPoint.x + width / 2, startPoint.y + height / 2, Math.abs(width / 2), Math.abs(height / 2), 0, 0, Math.PI * 2);
+            break;
+        case "arrow": {
+            const angle = Math.atan2(height, width);
+            const headLength = 18;
+            context.moveTo(startPoint.x, startPoint.y);
+            context.lineTo(point.x, point.y);
+            context.moveTo(point.x, point.y);
+            context.lineTo(point.x - headLength * Math.cos(angle - Math.PI / 6), point.y - headLength * Math.sin(angle - Math.PI / 6));
+            context.moveTo(point.x, point.y);
+            context.lineTo(point.x - headLength * Math.cos(angle + Math.PI / 6), point.y - headLength * Math.sin(angle + Math.PI / 6));
+            break;
+        }
+        case "star": {
+            const centerX = startPoint.x + width / 2;
+            const centerY = startPoint.y + height / 2;
+            const outerRadius = Math.min(Math.abs(width), Math.abs(height)) / 2;
+            const innerRadius = outerRadius / 2.2;
+            for (let index = 0; index < 10; index += 1) {
+                const radius = index % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (Math.PI / 5) * index - Math.PI / 2;
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+                if (index === 0)
+                    context.moveTo(x, y);
+                else
+                    context.lineTo(x, y);
+            }
+            context.closePath();
+            break;
+        }
+        case "heart": {
+            const left = Math.min(startPoint.x, point.x);
+            const top = Math.min(startPoint.y, point.y);
+            const heartWidth = Math.abs(width);
+            const heartHeight = Math.abs(height);
+            context.moveTo(left + heartWidth / 2, top + heartHeight);
+            context.bezierCurveTo(left + heartWidth, top + heartHeight * 0.75, left + heartWidth, top + heartHeight * 0.25, left + heartWidth / 2, top + heartHeight * 0.35);
+            context.bezierCurveTo(left, top + heartHeight * 0.25, left, top + heartHeight * 0.75, left + heartWidth / 2, top + heartHeight);
+            context.closePath();
+            break;
+        }
+        case "hexagon": {
+            const centerX = startPoint.x + width / 2;
+            const centerY = startPoint.y + height / 2;
+            const radius = Math.min(Math.abs(width), Math.abs(height)) / 2;
+            for (let index = 0; index < 6; index += 1) {
+                const angle = (Math.PI / 3) * index - Math.PI / 6;
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY + radius * Math.sin(angle);
+                if (index === 0)
+                    context.moveTo(x, y);
+                else
+                    context.lineTo(x, y);
+            }
+            context.closePath();
+            break;
+        }
+        case "brush":
+        case "eraser":
+            return;
     }
-    else if (activeTool === "rectangle") {
-        context.rect(startPoint.x, startPoint.y, point.x - startPoint.x, point.y - startPoint.y);
-    }
-    else if (activeTool === "ellipse") {
-        const width = point.x - startPoint.x;
-        const height = point.y - startPoint.y;
-        context.ellipse(startPoint.x + width / 2, startPoint.y + height / 2, Math.abs(width / 2), Math.abs(height / 2), 0, 0, Math.PI * 2);
-    }
-    if (fillInput.checked && (activeTool === "rectangle" || activeTool === "ellipse")) {
+    if (fillInput.checked && activeTool !== "line" && activeTool !== "arrow") {
         context.fill();
     }
     else {
@@ -126,13 +213,35 @@ function drawImageContained(targetContext, image, width, height) {
 }
 function setActiveTool(tool) {
     activeTool = tool;
+    selectedToolName.textContent = toolLabels[tool];
+    closeToolPicker();
     for (const button of toolButtons) {
         const selected = button.dataset.tool === tool;
         button.classList.toggle("is-selected", selected);
         button.setAttribute("aria-pressed", String(selected));
     }
     canvas.classList.toggle("eraser-cursor", tool === "eraser");
-    canvas.classList.toggle("shape-cursor", tool === "line" || tool === "rectangle" || tool === "ellipse");
+    canvas.classList.toggle("shape-cursor", tool !== "brush" && tool !== "eraser");
+}
+function closeToolPicker() {
+    toolPickerPanel.hidden = true;
+    toolPickerButton.setAttribute("aria-expanded", "false");
+}
+toolPickerButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toolPickerPanel.hidden = !toolPickerPanel.hidden;
+    toolPickerButton.setAttribute("aria-expanded", String(!toolPickerPanel.hidden));
+});
+toolPickerPanel.addEventListener("click", (event) => {
+    event.stopPropagation();
+});
+document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Node) || !toolPicker.contains(event.target)) {
+        closeToolPicker();
+    }
+});
+function isTool(value) {
+    return value !== undefined && Object.hasOwn(toolLabels, value);
 }
 function updateSaveStatus(message) {
     saveStatus.textContent = message;
@@ -196,13 +305,8 @@ function loadSavedDrawing() {
 for (const button of toolButtons) {
     button.addEventListener("click", () => {
         const tool = button.dataset.tool;
-        if (tool === "brush" ||
-            tool === "eraser" ||
-            tool === "line" ||
-            tool === "rectangle" ||
-            tool === "ellipse") {
+        if (isTool(tool))
             setActiveTool(tool);
-        }
     });
 }
 canvas.addEventListener("pointerdown", (event) => {
@@ -214,7 +318,7 @@ canvas.addEventListener("pointerdown", (event) => {
     startPoint = getCanvasPoint(event);
     gestureSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
     applyBrushStyle();
-    if (activeTool === "line" || activeTool === "rectangle" || activeTool === "ellipse") {
+    if (activeTool !== "brush" && activeTool !== "eraser") {
         drawingSnapshot = gestureSnapshot;
         return;
     }
@@ -349,6 +453,11 @@ removeTraceButton.addEventListener("click", () => {
     }
 });
 document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !toolPickerPanel.hidden) {
+        closeToolPicker();
+        toolPickerButton.focus();
+        return;
+    }
     const isApple = navigator.userAgent.includes("Mac");
     const modifierPressed = isApple ? event.metaKey : event.ctrlKey;
     if (!modifierPressed)

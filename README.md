@@ -12,8 +12,8 @@ You can also open `index.html` with VS Code Live Server. The browser script is c
 
 ## Current tools
 
-- Brush and eraser with adjustable color and size
-- Line, rectangle, and ellipse tools, with optional shape fill
+- A dropdown with brush, eraser, line, rectangle, circle, triangle, oval, arrow, star, heart, and hexagon tools
+- Adjustable color and size, plus optional shape fill
 - Undo and redo, including keyboard shortcuts
 - Change the paper color
 - Add or remove an image as a tracing guide
