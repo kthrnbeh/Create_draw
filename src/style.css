@@ -640,6 +640,7 @@ a:focus-visible {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
   margin: 2px 0 15px;
 }
 
@@ -651,26 +652,76 @@ a:focus-visible {
   margin-top: 4px;
 }
 
-.canvas-size {
-  padding-top: 2px;
-  color: #b1ada5;
+.viewport-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.viewport-button {
+  min-width: 29px;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid #e8e4dc;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #777572;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.viewport-button:hover:not(:disabled) {
+  border-color: #e8aa9b;
+  background: #fffaf7;
+  color: #bb6653;
+}
+
+.viewport-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.zoom-value {
+  min-width: 39px;
+  color: #88847d;
+  text-align: center;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
 
 .canvas-frame {
   width: 100%;
+  height: min(68vh, 760px);
+  min-height: 260px;
   padding: 13px;
+  overflow: hidden;
+  position: relative;
   border: 1px solid rgba(89, 84, 76, 0.08);
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.58);
   box-shadow: 0 14px 40px rgba(67, 60, 49, 0.06), 0 2px 7px rgba(67, 60, 49, 0.035);
 }
 
-.canvas-paper {
+.canvas-viewport {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 2;
+  height: 100%;
+  overflow: hidden;
+  outline: none;
+  touch-action: none;
+}
+
+.canvas-viewport:focus-visible {
+  outline: 2px solid rgba(226, 119, 99, 0.45);
+  outline-offset: -2px;
+}
+
+.canvas-paper {
+  position: absolute;
+  width: 1200px;
+  height: 800px;
+  transform-origin: center center;
+  will-change: transform;
   overflow: hidden;
   background: var(--paper);
   box-shadow: 0 1px 5px rgba(69, 64, 56, 0.1);
@@ -703,6 +754,14 @@ a:focus-visible {
   cursor: cell;
 }
 
+#drawingCanvas.hand-cursor {
+  cursor: grab;
+}
+
+#drawingCanvas.is-panning {
+  cursor: grabbing;
+}
+
 .trace-image {
   position: absolute;
   z-index: 0;
@@ -725,6 +784,43 @@ a:focus-visible {
   justify-content: space-between;
   gap: 12px;
   padding: 6px 2px 0;
+}
+
+.navigator-panel {
+  align-self: flex-end;
+  width: min(100%, 230px);
+  margin-top: 2px;
+  border: 1px solid #ebe7df;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.navigator-panel summary {
+  padding: 8px 10px;
+  color: #777572;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.navigator-content {
+  padding: 0 9px 8px;
+}
+
+#navigatorCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #e7e2d9;
+  border-radius: 4px;
+  background: #fffdf9;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#navigatorCanvas:focus-visible {
+  outline: 2px solid rgba(226, 119, 99, 0.45);
+  outline-offset: 2px;
 }
 
 .canvas-footer p,
@@ -819,10 +915,18 @@ footer {
   .canvas-frame {
     padding: 7px;
     border-radius: 9px;
+    height: min(55vh, 520px);
+    min-height: 220px;
   }
 
   .canvas-toolbar {
     margin-bottom: 9px;
+    flex-wrap: wrap;
+  }
+
+  .viewport-controls {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   .canvas-footer {

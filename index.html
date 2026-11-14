@@ -79,6 +79,9 @@
                   <button class="tool-button" type="button" data-tool="bucket" aria-pressed="false" aria-label="Paint bucket">
                     <span aria-hidden="true">▤</span><span>Bucket</span>
                   </button>
+                  <button class="tool-button" type="button" data-tool="hand" aria-pressed="false" aria-label="Hand">
+                    <span aria-hidden="true">✋</span><span>Hand</span>
+                  </button>
                   <button class="tool-button" type="button" data-tool="line" aria-pressed="false" aria-label="Line">
                     <span aria-hidden="true">╱</span><span>Line</span>
                   </button>
@@ -173,6 +176,7 @@
             </label>
             <input id="traceInput" class="visually-hidden" type="file" accept="image/*" />
             <button class="text-button" id="removeTraceButton" type="button" hidden>Remove tracing image</button>
+            <button class="text-button" id="centerImageButton" type="button" hidden>Center image</button>
           </section>
 
           <button class="clear-button" id="clearButton" type="button">
@@ -186,20 +190,36 @@
               <span class="eyebrow">UNTITLED CANVAS</span>
               <p>There are no wrong lines here.</p>
             </div>
-            <span class="canvas-size">1200 × 800</span>
+            <div class="viewport-controls" role="group" aria-label="Canvas navigation">
+              <button class="viewport-button" id="zoomOutButton" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+              <output class="zoom-value" id="zoomValue" aria-live="polite">100%</output>
+              <button class="viewport-button" id="zoomInButton" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+              <button class="viewport-button" id="fitToScreenButton" type="button" title="Fit artwork to screen">Fit</button>
+              <button class="viewport-button" id="centerCanvasButton" type="button" title="Center canvas at current zoom">Center</button>
+              <button class="viewport-button" id="resetViewButton" type="button" title="Reset zoom and pan">Reset</button>
+            </div>
           </div>
           <div class="canvas-frame">
-            <div class="canvas-paper" id="canvasPaper">
-              <img id="traceImage" class="trace-image" alt="Tracing reference" hidden />
-              <canvas id="drawingCanvas" width="1200" height="800" aria-label="Blank drawing canvas. Use a pointer to draw.">
-                Your browser does not support canvas drawing.
-              </canvas>
+            <div class="canvas-viewport" id="canvasViewport" tabindex="0" aria-label="Canvas viewport. Hold Space and drag to pan; use Control or Command and mouse wheel to zoom.">
+              <div class="canvas-paper" id="canvasPaper">
+                <img id="traceImage" class="trace-image" alt="Tracing reference" hidden />
+                <canvas id="drawingCanvas" width="1200" height="800" aria-label="Blank drawing canvas. Use a pointer to draw.">
+                  Your browser does not support canvas drawing.
+                </canvas>
+              </div>
             </div>
           </div>
           <div class="canvas-footer">
-            <p>Tip: Hold and drag to draw. Your work saves automatically on this device.</p>
+            <p>Tip: Hold and drag to draw. Hold Space and drag to pan. Ctrl/Command + wheel zooms.</p>
             <span id="canvasMessage" role="status" aria-live="polite"></span>
           </div>
+          <details class="navigator-panel" id="navigatorPanel" open>
+            <summary>Mini-map navigator</summary>
+            <div class="navigator-content">
+              <canvas id="navigatorCanvas" width="240" height="160" aria-label="Canvas mini-map. Click or drag to navigate." tabindex="0"></canvas>
+              <button class="text-button" id="navigatorResetButton" type="button">Reset view</button>
+            </div>
+          </details>
         </section>
       </main>
       <footer>Made for doodles, daydreams, and everything in between.</footer>

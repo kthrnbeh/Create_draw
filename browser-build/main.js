@@ -1,4 +1,5 @@
 import { floodFillPixels } from "./floodFill.js";
+import { MAX_ZOOM, MIN_ZOOM, Viewport } from "./core/Viewport.js";
 function getRequiredElement(selector) {
     const element = document.querySelector(selector);
     if (!element) {
@@ -21,6 +22,7 @@ colorSampleCanvas.height = canvas.height;
 const colorSampleContext = getCanvasContext(colorSampleCanvas);
 const saveStatus = getRequiredElement("#saveStatus");
 const appShell = getRequiredElement(".app-shell");
+const canvasViewport = getRequiredElement("#canvasViewport");
 const toolPicker = getRequiredElement("#toolPicker");
 const toolPickerButton = getRequiredElement("#toolPickerButton");
 const toolPickerPanel = getRequiredElement("#toolPickerPanel");
@@ -43,6 +45,7 @@ const canvasPaper = getRequiredElement("#canvasPaper");
 const traceInput = getRequiredElement("#traceInput");
 const traceImage = getRequiredElement("#traceImage");
 const removeTraceButton = getRequiredElement("#removeTraceButton");
+const centerImageButton = getRequiredElement("#centerImageButton");
 const undoButton = getRequiredElement("#undoButton");
 const redoButton = getRequiredElement("#redoButton");
 const clearButton = getRequiredElement("#clearButton");
@@ -50,6 +53,15 @@ const saveButton = getRequiredElement("#saveButton");
 const minimizeButton = getRequiredElement("#minimizeButton");
 const minimizedWindow = getRequiredElement("#minimizedWindow");
 const restoreButton = getRequiredElement("#restoreButton");
+const zoomOutButton = getRequiredElement("#zoomOutButton");
+const zoomInButton = getRequiredElement("#zoomInButton");
+const zoomValue = getRequiredElement("#zoomValue");
+const fitToScreenButton = getRequiredElement("#fitToScreenButton");
+const centerCanvasButton = getRequiredElement("#centerCanvasButton");
+const resetViewButton = getRequiredElement("#resetViewButton");
+const navigatorCanvas = getRequiredElement("#navigatorCanvas");
+const navigatorResetButton = getRequiredElement("#navigatorResetButton");
+const navigatorContext = getCanvasContext(navigatorCanvas);
 const storageKey = "create-draw-canvas-v1";
 const maxHistoryEntries = 30;
 const maxHistoryCharacters = 24 * 1024 * 1024;
@@ -60,6 +72,7 @@ const toolLabels = {
     eraser: "Eraser",
     eyedropper: "Eyedropper",
     bucket: "Paint Bucket",
+    hand: "Hand",
     line: "Line",
     rectangle: "Rectangle",
     circle: "Circle",
@@ -73,9 +86,19 @@ const toolLabels = {
 let activeTool = "brush";
 let lastDrawingTool = "brush";
 let isDrawing = false;
+let isPanning = false;
 let isFilling = false;
 let isHistoryRestoring = false;
+let isSpaceHandActive = false;
 let startPoint = { x: 0, y: 0 };
+let lastPanPoint = null;
+let panPointerId = null;
+let drawingPointerId = null;
+let pinchMidpoint = null;
+let pinchDistance = 0;
+let isTouchNavigationActive = false;
+const touchPoints = new Map();
+const viewport = new Viewport();
 let drawingSnapshot = null;
 let gestureSnapshot = null;
 let traceObjectUrl = null;
@@ -116,6 +139,7 @@ function rememberCanvas() {
     }
     historyIndex = history.length - 1;
     updateHistoryButtons();
+    updateNavigator();
     scheduleSave();
 }
 async function restoreCanvas(index) {
@@ -133,6 +157,7 @@ async function restoreCanvas(index) {
         context.clearRect(0, 0, canvas.width, canvas.height);
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
         historyIndex = index;
+        updateNavigator();
         scheduleSave();
     }
     catch (error) {
@@ -145,11 +170,65 @@ async function restoreCanvas(index) {
     }
 }
 function getCanvasPoint(event) {
-    const bounds = canvas.getBoundingClientRect();
-    return {
-        x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
-        y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
-    };
+    return viewport.viewportToArtwork(getViewportPoint(event), getViewportSize(), getArtworkSize());
+}
+function getViewportPoint(event) {
+    const bounds = canvasViewport.getBoundingClientRect();
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+}
+function getViewportSize() {
+    return { width: canvasViewport.clientWidth, height: canvasViewport.clientHeight };
+}
+function getArtworkSize() {
+    return { width: canvas.width, height: canvas.height };
+}
+function applyViewport() {
+    canvasPaper.style.transform =
+        `translate(${viewport.panX}px, ${viewport.panY}px) scale(${viewport.zoom})`;
+    zoomValue.value = `${Math.round(viewport.zoom * 100)}%`;
+    zoomOutButton.disabled = viewport.zoom <= MIN_ZOOM;
+    zoomInButton.disabled = viewport.zoom >= MAX_ZOOM;
+    updateNavigator();
+}
+function layoutCanvasPaper() {
+    const size = getViewportSize();
+    if (size.width <= 0 || size.height <= 0)
+        return;
+    canvasPaper.style.width = `${canvas.width}px`;
+    canvasPaper.style.height = `${canvas.height}px`;
+    canvasPaper.style.left = `${(size.width - canvas.width) / 2}px`;
+    canvasPaper.style.top = `${(size.height - canvas.height) / 2}px`;
+    applyViewport();
+}
+function updateNavigator() {
+    const viewportSize = getViewportSize();
+    if (viewportSize.width <= 0 || viewportSize.height <= 0)
+        return;
+    const mapWidth = navigatorCanvas.width;
+    const mapHeight = navigatorCanvas.height;
+    navigatorContext.clearRect(0, 0, mapWidth, mapHeight);
+    navigatorContext.fillStyle = backgroundInput.value;
+    navigatorContext.fillRect(0, 0, mapWidth, mapHeight);
+    if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
+        navigatorContext.globalAlpha = 0.28;
+        drawImageContained(navigatorContext, traceImage, mapWidth, mapHeight);
+        navigatorContext.globalAlpha = 1;
+    }
+    navigatorContext.drawImage(canvas, 0, 0, mapWidth, mapHeight);
+    const visible = viewport.getVisibleArtworkRect(viewportSize, getArtworkSize());
+    const left = Math.max(0, visible.x / canvas.width * mapWidth);
+    const top = Math.max(0, visible.y / canvas.height * mapHeight);
+    const right = Math.min(mapWidth, (visible.x + visible.width) / canvas.width * mapWidth);
+    const bottom = Math.min(mapHeight, (visible.y + visible.height) / canvas.height * mapHeight);
+    if (right <= left || bottom <= top)
+        return;
+    navigatorContext.save();
+    navigatorContext.strokeStyle = "#e27763";
+    navigatorContext.lineWidth = 2;
+    navigatorContext.fillStyle = "rgba(226, 119, 99, 0.12)";
+    navigatorContext.fillRect(left, top, right - left, bottom - top);
+    navigatorContext.strokeRect(left, top, right - left, bottom - top);
+    navigatorContext.restore();
 }
 function applyBrushStyle() {
     let widthMultiplier = 1;
@@ -339,7 +418,7 @@ async function fillCanvasRegion(point) {
 }
 function setActiveTool(tool) {
     activeTool = tool;
-    if (tool !== "eyedropper" && tool !== "bucket") {
+    if (tool !== "eyedropper" && tool !== "bucket" && tool !== "hand") {
         lastDrawingTool = tool;
     }
     selectedToolName.textContent = toolLabels[tool];
@@ -350,10 +429,19 @@ function setActiveTool(tool) {
         button.classList.toggle("is-selected", selected);
         button.setAttribute("aria-pressed", String(selected));
     }
-    canvas.classList.toggle("eraser-cursor", tool === "eraser");
-    canvas.classList.toggle("eyedropper-cursor", tool === "eyedropper");
-    canvas.classList.toggle("bucket-cursor", tool === "bucket");
-    canvas.classList.toggle("shape-cursor", tool !== "brush" && tool !== "eraser" && tool !== "eyedropper" && tool !== "bucket");
+    updateCanvasCursor();
+}
+function updateCanvasCursor() {
+    const handActive = activeTool === "hand" || isSpaceHandActive;
+    canvas.classList.toggle("hand-cursor", handActive);
+    canvas.classList.toggle("eraser-cursor", !handActive && activeTool === "eraser");
+    canvas.classList.toggle("eyedropper-cursor", !handActive && activeTool === "eyedropper");
+    canvas.classList.toggle("bucket-cursor", !handActive && activeTool === "bucket");
+    canvas.classList.toggle("shape-cursor", !handActive &&
+        activeTool !== "brush" &&
+        activeTool !== "eraser" &&
+        activeTool !== "eyedropper" &&
+        activeTool !== "bucket");
 }
 function closeToolPicker() {
     toolPickerPanel.hidden = true;
@@ -419,6 +507,7 @@ function loadSavedDrawing() {
             historyCharacters = snapshot.length;
             historyIndex = 0;
             updateHistoryButtons();
+            updateNavigator();
             updateSaveStatus("Your last drawing is back");
         };
         image.onerror = () => {
@@ -443,10 +532,57 @@ for (const button of toolButtons) {
             setActiveTool(tool);
     });
 }
+function interruptDrawing() {
+    if (gestureSnapshot)
+        context.putImageData(gestureSnapshot, 0, 0);
+    isDrawing = false;
+    drawingPointerId = null;
+    drawingSnapshot = null;
+    gestureSnapshot = null;
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+}
+function getTouchGeometry() {
+    const points = Array.from(touchPoints.values());
+    if (points.length < 2)
+        return null;
+    const first = points[0];
+    const second = points[1];
+    return {
+        midpoint: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 },
+        distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+    };
+}
 canvas.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0 || isFilling || isHistoryRestoring)
+    if (event.pointerType === "touch") {
+        touchPoints.set(event.pointerId, getViewportPoint(event));
+        if (touchPoints.size >= 2) {
+            event.preventDefault();
+            interruptDrawing();
+            isPanning = false;
+            panPointerId = null;
+            lastPanPoint = null;
+            canvas.classList.remove("is-panning");
+            isTouchNavigationActive = true;
+            canvas.setPointerCapture(event.pointerId);
+            const geometry = getTouchGeometry();
+            pinchMidpoint = geometry?.midpoint ?? null;
+            pinchDistance = geometry?.distance ?? 0;
+            return;
+        }
+    }
+    if (event.button !== 0 || isFilling || isHistoryRestoring || isTouchNavigationActive)
         return;
     event.preventDefault();
+    canvasViewport.focus({ preventScroll: true });
+    if (activeTool === "hand" || isSpaceHandActive) {
+        canvas.setPointerCapture(event.pointerId);
+        isPanning = true;
+        panPointerId = event.pointerId;
+        lastPanPoint = getViewportPoint(event);
+        canvas.classList.add("is-panning");
+        return;
+    }
     const point = getCanvasPoint(event);
     if (activeTool === "eyedropper") {
         try {
@@ -467,6 +603,7 @@ canvas.addEventListener("pointerdown", (event) => {
     }
     canvas.setPointerCapture(event.pointerId);
     isDrawing = true;
+    drawingPointerId = event.pointerId;
     startPoint = point;
     gestureSnapshot = context.getImageData(0, 0, canvas.width, canvas.height);
     applyBrushStyle();
@@ -481,7 +618,29 @@ canvas.addEventListener("pointerdown", (event) => {
     context.stroke();
 });
 canvas.addEventListener("pointermove", (event) => {
-    if (!isDrawing)
+    if (event.pointerType === "touch" && touchPoints.has(event.pointerId)) {
+        touchPoints.set(event.pointerId, getViewportPoint(event));
+        if (isTouchNavigationActive) {
+            const geometry = getTouchGeometry();
+            if (geometry && pinchMidpoint && pinchDistance > 0) {
+                const viewportSize = getViewportSize();
+                viewport.zoomAt(viewport.zoom * (geometry.distance / pinchDistance), pinchMidpoint, viewportSize);
+                viewport.panBy(geometry.midpoint.x - pinchMidpoint.x, geometry.midpoint.y - pinchMidpoint.y);
+                pinchMidpoint = geometry.midpoint;
+                pinchDistance = geometry.distance;
+                applyViewport();
+            }
+            return;
+        }
+    }
+    if (isPanning && event.pointerId === panPointerId && lastPanPoint) {
+        const point = getViewportPoint(event);
+        viewport.panBy(point.x - lastPanPoint.x, point.y - lastPanPoint.y);
+        lastPanPoint = point;
+        applyViewport();
+        return;
+    }
+    if (!isDrawing || event.pointerId !== drawingPointerId)
         return;
     const point = getCanvasPoint(event);
     if (drawingSnapshot) {
@@ -492,27 +651,170 @@ canvas.addEventListener("pointermove", (event) => {
     context.stroke();
 });
 canvas.addEventListener("pointerup", (event) => {
-    if (!isDrawing)
+    if (event.pointerType === "touch") {
+        touchPoints.delete(event.pointerId);
+        if (touchPoints.size < 2) {
+            pinchMidpoint = null;
+            pinchDistance = 0;
+        }
+        if (touchPoints.size === 0)
+            isTouchNavigationActive = false;
+    }
+    if (isPanning && event.pointerId === panPointerId) {
+        isPanning = false;
+        panPointerId = null;
+        lastPanPoint = null;
+        canvas.classList.remove("is-panning");
+        return;
+    }
+    if (!isDrawing || event.pointerId !== drawingPointerId)
         return;
     if (drawingSnapshot) {
         drawShape(getCanvasPoint(event));
     }
     isDrawing = false;
+    drawingPointerId = null;
     drawingSnapshot = null;
     gestureSnapshot = null;
     context.globalCompositeOperation = "source-over";
     context.globalAlpha = 1;
     rememberCanvas();
 });
-canvas.addEventListener("pointercancel", () => {
-    if (gestureSnapshot) {
-        context.putImageData(gestureSnapshot, 0, 0);
+canvas.addEventListener("pointercancel", (event) => {
+    if (event.pointerType === "touch") {
+        touchPoints.delete(event.pointerId);
+        if (touchPoints.size < 2) {
+            pinchMidpoint = null;
+            pinchDistance = 0;
+        }
+        if (touchPoints.size === 0)
+            isTouchNavigationActive = false;
     }
-    isDrawing = false;
-    drawingSnapshot = null;
-    gestureSnapshot = null;
-    context.globalCompositeOperation = "source-over";
-    context.globalAlpha = 1;
+    if (event.pointerId === drawingPointerId)
+        interruptDrawing();
+    if (event.pointerId === panPointerId) {
+        isPanning = false;
+        panPointerId = null;
+        lastPanPoint = null;
+        canvas.classList.remove("is-panning");
+    }
+});
+canvas.addEventListener("lostpointercapture", (event) => {
+    if (event.pointerType === "touch" && touchPoints.delete(event.pointerId)) {
+        if (touchPoints.size < 2) {
+            pinchMidpoint = null;
+            pinchDistance = 0;
+        }
+        if (touchPoints.size === 0)
+            isTouchNavigationActive = false;
+    }
+    if (event.pointerId === drawingPointerId)
+        interruptDrawing();
+    if (event.pointerId === panPointerId) {
+        isPanning = false;
+        panPointerId = null;
+        lastPanPoint = null;
+        canvas.classList.remove("is-panning");
+    }
+});
+function zoomAtViewportPoint(zoom, focalPoint = {
+    x: getViewportSize().width / 2,
+    y: getViewportSize().height / 2,
+}) {
+    viewport.zoomAt(zoom, focalPoint, getViewportSize());
+    applyViewport();
+}
+function resetViewport() {
+    viewport.resetView();
+    applyViewport();
+}
+zoomInButton.addEventListener("click", () => {
+    zoomAtViewportPoint(viewport.zoom * 1.2);
+});
+zoomOutButton.addEventListener("click", () => {
+    zoomAtViewportPoint(viewport.zoom / 1.2);
+});
+fitToScreenButton.addEventListener("click", () => {
+    viewport.fitToScreen(getViewportSize(), getArtworkSize());
+    applyViewport();
+});
+centerCanvasButton.addEventListener("click", () => {
+    viewport.centerCanvas();
+    applyViewport();
+});
+resetViewButton.addEventListener("click", resetViewport);
+navigatorResetButton.addEventListener("click", resetViewport);
+canvasViewport.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey)
+        return;
+    event.preventDefault();
+    const zoomFactor = Math.exp(-event.deltaY * 0.002);
+    zoomAtViewportPoint(viewport.zoom * zoomFactor, getViewportPoint(event));
+}, { passive: false });
+centerImageButton.addEventListener("click", () => {
+    traceImage.style.objectPosition = "center center";
+    traceImage.style.transform = "none";
+    announce("Tracing image centered on the canvas.");
+});
+let navigatorDragging = false;
+let navigatorLastPoint = null;
+function getNavigatorPoint(event) {
+    const bounds = navigatorCanvas.getBoundingClientRect();
+    return {
+        x: ((event.clientX - bounds.left) / bounds.width) * navigatorCanvas.width,
+        y: ((event.clientY - bounds.top) / bounds.height) * navigatorCanvas.height,
+    };
+}
+navigatorCanvas.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0)
+        return;
+    event.preventDefault();
+    navigatorCanvas.setPointerCapture(event.pointerId);
+    const point = getNavigatorPoint(event);
+    const visible = viewport.getVisibleArtworkRect(getViewportSize(), getArtworkSize());
+    const scaleX = navigatorCanvas.width / canvas.width;
+    const scaleY = navigatorCanvas.height / canvas.height;
+    const isInsideViewport = point.x >= visible.x * scaleX &&
+        point.x <= (visible.x + visible.width) * scaleX &&
+        point.y >= visible.y * scaleY &&
+        point.y <= (visible.y + visible.height) * scaleY;
+    if (!isInsideViewport) {
+        viewport.centerOnArtworkPoint({ x: point.x / scaleX, y: point.y / scaleY }, getArtworkSize());
+        applyViewport();
+    }
+    navigatorDragging = true;
+    navigatorLastPoint = point;
+});
+navigatorCanvas.addEventListener("pointermove", (event) => {
+    if (!navigatorDragging || !navigatorLastPoint)
+        return;
+    const point = getNavigatorPoint(event);
+    const deltaX = point.x - navigatorLastPoint.x;
+    const deltaY = point.y - navigatorLastPoint.y;
+    viewport.panBy(-deltaX * (canvas.width / navigatorCanvas.width) * viewport.zoom, -deltaY * (canvas.height / navigatorCanvas.height) * viewport.zoom);
+    navigatorLastPoint = point;
+    applyViewport();
+});
+function stopNavigatorDrag() {
+    navigatorDragging = false;
+    navigatorLastPoint = null;
+}
+navigatorCanvas.addEventListener("pointerup", stopNavigatorDrag);
+navigatorCanvas.addEventListener("pointercancel", stopNavigatorDrag);
+navigatorCanvas.addEventListener("lostpointercapture", stopNavigatorDrag);
+navigatorCanvas.addEventListener("keydown", (event) => {
+    const keyDeltas = {
+        ArrowUp: { x: 0, y: 40 },
+        ArrowDown: { x: 0, y: -40 },
+        ArrowLeft: { x: 40, y: 0 },
+        ArrowRight: { x: -40, y: 0 },
+    };
+    const delta = keyDeltas[event.key];
+    if (!delta)
+        return;
+    event.preventDefault();
+    viewport.panBy(delta.x, delta.y);
+    applyViewport();
 });
 undoButton.addEventListener("click", () => {
     if (historyIndex > 0)
@@ -586,6 +888,7 @@ sizeInput.addEventListener("input", () => {
 });
 backgroundInput.addEventListener("input", () => {
     canvasPaper.style.backgroundColor = backgroundInput.value;
+    updateNavigator();
     scheduleSave();
 });
 traceInput.addEventListener("change", () => {
@@ -603,23 +906,36 @@ traceInput.addEventListener("change", () => {
     traceImage.src = traceObjectUrl;
     traceImage.hidden = false;
     removeTraceButton.hidden = false;
+    centerImageButton.hidden = false;
     announce("Tracing guide added. It won't cover your drawing.");
+    updateNavigator();
 });
+traceImage.addEventListener("load", updateNavigator);
 removeTraceButton.addEventListener("click", () => {
     traceImage.hidden = true;
     traceImage.removeAttribute("src");
     removeTraceButton.hidden = true;
+    centerImageButton.hidden = true;
     traceInput.value = "";
     if (traceObjectUrl) {
         URL.revokeObjectURL(traceObjectUrl);
         traceObjectUrl = null;
     }
+    updateNavigator();
 });
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !toolPickerPanel.hidden) {
         closeToolPicker();
         toolPickerButton.focus();
         return;
+    }
+    if (event.code === "Space" &&
+        !event.repeat &&
+        !isDrawing &&
+        !(event.target instanceof HTMLElement && event.target.closest("button, input, select, textarea"))) {
+        event.preventDefault();
+        isSpaceHandActive = true;
+        updateCanvasCursor();
     }
     const isApple = navigator.userAgent.includes("Mac");
     const modifierPressed = isApple ? event.metaKey : event.ctrlKey;
@@ -640,7 +956,33 @@ document.addEventListener("keydown", (event) => {
         void restoreCanvas(historyIndex + 1);
     }
 });
+document.addEventListener("keyup", (event) => {
+    if (event.code !== "Space" || !isSpaceHandActive)
+        return;
+    isSpaceHandActive = false;
+    updateCanvasCursor();
+});
+window.addEventListener("blur", () => {
+    if (isSpaceHandActive) {
+        isSpaceHandActive = false;
+        updateCanvasCursor();
+    }
+    if (isDrawing)
+        interruptDrawing();
+    isPanning = false;
+    panPointerId = null;
+    lastPanPoint = null;
+    canvas.classList.remove("is-panning");
+    touchPoints.clear();
+    pinchMidpoint = null;
+    pinchDistance = 0;
+    isTouchNavigationActive = false;
+});
+window.addEventListener("resize", layoutCanvasPaper);
 updateSelectedColor(colorInput.value);
 opacityValue.value = `${brushOpacityInput.value}%`;
 fillToleranceValue.value = fillToleranceInput.value;
+layoutCanvasPaper();
+viewport.fitToScreen(getViewportSize(), getArtworkSize());
+applyViewport();
 loadSavedDrawing();

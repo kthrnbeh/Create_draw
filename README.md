@@ -13,6 +13,9 @@ You can also open `index.html` with VS Code Live Server. The browser scripts are
 ## Current tools
 
 - Tool dropdown with brush, eraser, eyedropper, paint bucket, line, rectangle, circle, triangle, oval, arrow, star, heart, and hexagon
+- Hand tool, Space-drag panning, and touch pinch navigation
+- Zoom controls from 25% to 400%, cursor-centered Ctrl/Command-wheel zoom, Fit, Center, and Reset
+- Collapsible mini-map for navigating the artwork at high zoom
 - Pencil, marker, and highlighter brush presets, adjustable size and opacity, and optional shape fill
 - Eyedropper sampling from visible artwork, tracing guide, and paper color
 - Paint bucket with adjustable tolerance and undo/redo support
@@ -23,10 +26,12 @@ You can also open `index.html` with VS Code Live Server. The browser scripts are
 - Automatically save the current drawing in this browser
 - Download the drawing as a PNG
 
+The artwork remains a 1200 × 800 canvas; zooming and panning change only its viewport. The tracing image is still a single centered reference at this phase. Moving, resizing, rotating, and flipping references are planned for the next implementation phase.
+
 The minimize button collapses the drawing app inside the page; use your browser or operating system controls to minimize or close the browser window itself. The drawing is saved in browser storage on this device. Download it as a PNG to keep a separate copy.
 
 ## Build
 
 Run `npm run build` to type-check the TypeScript and create a production build in `dist/`.
 
-Run `npm test` to test the paint-bucket fill behavior.
+Run `npm test` to test paint-bucket filling and viewport coordinate behavior.
