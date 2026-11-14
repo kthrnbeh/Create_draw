@@ -605,6 +605,135 @@ a:focus-visible {
   text-decoration: underline;
 }
 
+.layers-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.layers-heading .section-label {
+  margin: 0;
+}
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 220px;
+  margin: 0 0 13px;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.layer-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 24px 24px 38px;
+  align-items: center;
+  gap: 3px;
+  min-height: 34px;
+  padding: 3px 4px;
+  border: 1px solid #eeece6;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.layer-row.is-active {
+  border-color: #e8aa9b;
+  background: #fff7f3;
+}
+
+.layer-select-button,
+.layer-icon-button {
+  min-width: 22px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #8d8982;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.layer-select-button[aria-pressed="true"] {
+  color: #cf715d;
+}
+
+.layer-icon-button:hover:not(:disabled),
+.layer-select-button:hover {
+  background: #f3eee8;
+  color: #bb6653;
+}
+
+.layer-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.layer-name-input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #777572;
+  font-size: 9px;
+}
+
+.layer-name-input:focus {
+  border-color: #e8aa9b;
+  outline: none;
+  background: #fffdf9;
+}
+
+.layer-reorder-buttons {
+  display: flex;
+}
+
+.layer-reorder-buttons .layer-icon-button {
+  min-width: 18px;
+}
+
+.layer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.layer-action-button {
+  min-height: 29px;
+  padding: 0 7px;
+  border: 1px solid #ebe7df;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.56);
+  color: #777572;
+  cursor: pointer;
+  font-size: 9px;
+}
+
+.layer-action-button:hover:not(:disabled) {
+  border-color: #e8aa9b;
+  background: #fffaf7;
+  color: #bb6653;
+}
+
+.layer-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.layers-heading .layer-action-button {
+  min-height: 25px;
+}
+
+.layer-actions .layer-delete-button {
+  color: #ad6f78;
+}
+
 .clear-button {
   width: 100%;
   min-height: 36px;

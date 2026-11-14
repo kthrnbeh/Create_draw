@@ -19,12 +19,15 @@ You can also open `index.html` with VS Code Live Server. The browser scripts are
 - Eleven simulated art-supply brush styles, including pencil, fine liner, fountain pen, calligraphy, watercolor, charcoal, crayon, paintbrush, and airbrush, with adjustable size and opacity
 - Eyedropper sampling from visible artwork, tracing guide, and paper color
 - Paint bucket with adjustable tolerance and undo/redo support
-- Memory-conscious Undo/Redo history, including keyboard shortcuts
+- Editable raster layers with selection, rename, visibility, lock, opacity, reorder, duplicate, delete, merge-down, and flatten controls
+- Memory-conscious Undo/Redo history across layer contents and layer settings, including keyboard shortcuts
 - Change the paper color
 - Add or remove an image as a tracing guide
 - Minimize the app into a compact restore control
-- Automatically save the current drawing in this browser
+- Automatically save a versioned, multi-layer project in this browser
 - Download the drawing as a PNG
+
+The first saved project automatically migrates the previous single-canvas drawing into a raster layer. The older browser save is kept as a recovery copy.
 
 The artwork remains a 1200 × 800 canvas; zooming and panning change only its viewport. The tracing image is still a single centered reference at this phase. Moving, resizing, rotating, and flipping references are planned for the next implementation phase.
 
@@ -34,4 +37,4 @@ The minimize button collapses the drawing app inside the page; use your browser 
 
 Run `npm run build` to type-check the TypeScript and create a production build in `dist/`.
 
-Run `npm test` to test paint-bucket filling and viewport coordinate behavior.
+Run `npm test` to test layer operations and persistence validation, paint-bucket filling, brush rendering, and viewport behavior.

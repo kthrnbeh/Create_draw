@@ -1,5 +1,11 @@
 import { floodFillPixels } from "./floodFill.js";
 import { MAX_ZOOM, MIN_ZOOM, Viewport } from "./core/Viewport.js";
+import { LayerManager } from "./layers/LayerManager.js";
+import {
+  createProjectDocument,
+  isLegacySavedDrawing,
+  isProjectDocument,
+} from "./storage/ProjectDocument.js";
 import {
   BRUSH_PRESETS,
   drawBrushSegment,
@@ -38,7 +44,9 @@ function getCanvasContext(element: HTMLCanvasElement): CanvasRenderingContext2D 
   }
   return drawingContext;
 }
-const context = getCanvasContext(canvas);
+const displayContext = getCanvasContext(canvas);
+const layerManager = new LayerManager(canvas.width, canvas.height);
+let context = layerManager.activeLayer.context;
 const colorSampleCanvas = document.createElement("canvas");
 colorSampleCanvas.width = canvas.width;
 colorSampleCanvas.height = canvas.height;
@@ -86,8 +94,20 @@ const resetViewButton = getRequiredElement<HTMLButtonElement>("#resetViewButton"
 const navigatorCanvas = getRequiredElement<HTMLCanvasElement>("#navigatorCanvas");
 const navigatorResetButton = getRequiredElement<HTMLButtonElement>("#navigatorResetButton");
 const navigatorContext = getCanvasContext(navigatorCanvas);
+const addLayerButton = getRequiredElement<HTMLButtonElement>("#addLayerButton");
+const layerList = getRequiredElement<HTMLOListElement>("#layerList");
+const layerOpacityInput = getRequiredElement<HTMLInputElement>("#layerOpacity");
+const layerOpacityValue = getRequiredElement<HTMLOutputElement>("#layerOpacityValue");
+const duplicateLayerButton = getRequiredElement<HTMLButtonElement>("#duplicateLayerButton");
+const mergeLayerButton = getRequiredElement<HTMLButtonElement>("#mergeLayerButton");
+const flattenLayersButton = getRequiredElement<HTMLButtonElement>("#flattenLayersButton");
+const deleteLayerButton = getRequiredElement<HTMLButtonElement>("#deleteLayerButton");
 
-const storageKey = "create-draw-canvas-v1";
+const projectStorageKey = "create-draw-project-v1";
+const legacyStorageKey = "create-draw-canvas-v1";
+const historySnapshotTime = "2000-01-01T00:00:00.000Z";
+let projectId = `project-${Date.now().toString(36)}`;
+let projectName = "My drawing";
 const maxHistoryEntries = 30;
 const maxHistoryCharacters = 24 * 1024 * 1024;
 const toolButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-tool]"));
@@ -109,17 +129,13 @@ const toolLabels: Record<Tool, string> = {
   hexagon: "Hexagon",
 };
 
-interface SavedDrawing {
-  drawing: string;
-  background: string;
-}
-
 let activeTool: Tool = "brush";
 let lastDrawingTool: Tool = "brush";
 let isDrawing = false;
 let isPanning = false;
 let isFilling = false;
 let isHistoryRestoring = false;
+let isProjectLoading = true;
 let isSpaceHandActive = false;
 let startPoint = { x: 0, y: 0 };
 let previousBrushPoint: { x: number; y: number } | null = null;
@@ -152,15 +168,36 @@ function announce(message: string): void {
 }
 
 function updateHistoryButtons(): void {
-  const isBusy = isFilling || isHistoryRestoring;
+  const isBusy = isFilling || isHistoryRestoring || isProjectLoading;
   undoButton.disabled = isBusy || historyIndex <= 0;
   redoButton.disabled = isBusy || historyIndex >= history.length - 1;
   clearButton.disabled = isBusy;
   saveButton.disabled = isBusy;
+  backgroundInput.disabled = isBusy;
+  updateLayerActionAvailability();
+}
+
+function createCurrentProject(
+  updatedAt?: string,
+): ReturnType<typeof createProjectDocument> {
+  return createProjectDocument(
+    projectId,
+    projectName,
+    canvas.width,
+    canvas.height,
+    backgroundInput.value,
+    layerManager.serialize(),
+    updatedAt,
+  );
+}
+
+function renderLayers(): void {
+  layerManager.render(displayContext);
+  updateNavigator();
 }
 
 function rememberCanvas(): void {
-  const snapshot = canvas.toDataURL("image/png");
+  const snapshot = JSON.stringify(createCurrentProject(historySnapshotTime));
   if (history[historyIndex] === snapshot) return;
 
   history = history.slice(0, historyIndex + 1);
@@ -178,32 +215,43 @@ function rememberCanvas(): void {
 
   historyIndex = history.length - 1;
   updateHistoryButtons();
-  updateNavigator();
   scheduleSave();
 }
 
 async function restoreCanvas(index: number): Promise<void> {
-  if (isFilling || isHistoryRestoring || index < 0 || index >= history.length) return;
+  if (
+    isFilling ||
+    isHistoryRestoring ||
+    isProjectLoading ||
+    index < 0 ||
+    index >= history.length
+  ) return;
   const snapshot = history[index];
   if (!snapshot) return;
 
   isHistoryRestoring = true;
   updateHistoryButtons();
+  refreshLayerPanel();
 
   try {
-    const image = new Image();
-    image.src = snapshot;
-    await image.decode();
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const project: unknown = JSON.parse(snapshot);
+    if (!isProjectDocument(project)) {
+      throw new Error("The history entry has an unexpected format.");
+    }
+    await layerManager.restore(project);
+    context = layerManager.activeLayer.context;
+    backgroundInput.value = project.background;
+    canvasPaper.style.backgroundColor = project.background;
+    refreshLayerPanel();
+    renderLayers();
     historyIndex = index;
-    updateNavigator();
     scheduleSave();
   } catch (error) {
     announce("Couldn't restore that history step.");
     console.error("Could not restore canvas history.", error);
   } finally {
     isHistoryRestoring = false;
+    refreshLayerPanel();
     updateHistoryButtons();
   }
 }
@@ -248,6 +296,7 @@ function drawActiveStrokeSegment(
       color: colorInput.value,
       opacity: Number(brushOpacityInput.value) / 100,
     });
+    renderLayers();
     return;
   }
 
@@ -263,6 +312,7 @@ function drawActiveStrokeSegment(
       : end.y,
   );
   context.stroke();
+  renderLayers();
 }
 
 function applyViewport(): void {
@@ -467,6 +517,7 @@ function drawShape(point: { x: number; y: number }): void {
   } else {
     context.stroke();
   }
+  renderLayers();
 }
 
 function drawImageContained(
@@ -524,16 +575,23 @@ function sampleVisibleColor(point: { x: number; y: number }): string {
 }
 
 async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> {
-  if (isFilling || isHistoryRestoring) return;
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
 
   isFilling = true;
   canvas.setAttribute("aria-busy", "true");
   updateHistoryButtons();
+  refreshLayerPanel();
 
   try {
     const x = Math.max(0, Math.min(canvas.width - 1, Math.floor(point.x)));
     const y = Math.max(0, Math.min(canvas.height - 1, Math.floor(point.y)));
-    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    if (!layerManager.canEditActiveLayer) {
+      announce("Unlock and show the selected layer before editing it.");
+      return;
+    }
+
+    const targetContext = context;
+    const imageData = targetContext.getImageData(0, 0, canvas.width, canvas.height);
     const fillColor = colorToRgba(colorInput.value);
     const tolerance = Number(fillToleranceInput.value);
     const changed = await floodFillPixels(
@@ -551,7 +609,8 @@ async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> 
       return;
     }
 
-    context.putImageData(imageData, 0, 0);
+    targetContext.putImageData(imageData, 0, 0);
+    renderLayers();
     rememberCanvas();
     announce("Area filled.");
   } catch (error) {
@@ -561,6 +620,7 @@ async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> 
     isFilling = false;
     canvas.removeAttribute("aria-busy");
     updateHistoryButtons();
+    refreshLayerPanel();
   }
 }
 
@@ -627,16 +687,215 @@ function updateSaveStatus(message: string): void {
   saveStatus.textContent = message;
 }
 
+function updateLayerActionAvailability(): void {
+  const active = layerManager.activeLayer;
+  const activeIndex = layerManager.layers.indexOf(active);
+  const busy = isFilling || isHistoryRestoring || isProjectLoading;
+  addLayerButton.disabled = busy;
+  duplicateLayerButton.disabled = busy;
+  mergeLayerButton.disabled = busy || activeIndex <= 0;
+  flattenLayersButton.disabled = busy || layerManager.layers.length <= 1;
+  deleteLayerButton.disabled = busy || layerManager.layers.length <= 1;
+  layerOpacityInput.disabled = busy;
+}
+
+function refreshLayerPanel(): void {
+  layerList.replaceChildren();
+  const active = layerManager.activeLayer;
+  layerOpacityInput.value = String(Math.round(active.opacity * 100));
+  layerOpacityValue.value = `${layerOpacityInput.value}%`;
+
+  for (const layer of [...layerManager.layers].reverse()) {
+    const layerIndex = layerManager.layers.indexOf(layer);
+    const row = document.createElement("li");
+    row.className = "layer-row";
+    row.classList.toggle("is-active", layer.id === active.id);
+
+    const selectButton = document.createElement("button");
+    selectButton.className = "layer-select-button";
+    selectButton.type = "button";
+    selectButton.textContent = layer.id === active.id ? "●" : "○";
+    selectButton.title = `Select ${layer.name}`;
+    selectButton.disabled = isFilling || isHistoryRestoring || isProjectLoading;
+    selectButton.setAttribute("aria-pressed", String(layer.id === active.id));
+    selectButton.addEventListener("click", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) return;
+      layerManager.setActiveLayer(layer.id);
+      context = layerManager.activeLayer.context;
+      refreshLayerPanel();
+      rememberCanvas();
+    });
+
+    const visibilityButton = document.createElement("button");
+    visibilityButton.className = "layer-icon-button";
+    visibilityButton.type = "button";
+    visibilityButton.textContent = layer.visible ? "◉" : "○";
+    visibilityButton.title = layer.visible ? "Hide layer" : "Show layer";
+    visibilityButton.setAttribute("aria-label", visibilityButton.title);
+    visibilityButton.setAttribute("aria-pressed", String(layer.visible));
+    visibilityButton.disabled = isFilling || isHistoryRestoring || isProjectLoading;
+    visibilityButton.addEventListener("click", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) return;
+      layerManager.setLayerVisible(layer.id, !layer.visible);
+      refreshLayerPanel();
+      renderLayers();
+      rememberCanvas();
+    });
+
+    const lockButton = document.createElement("button");
+    lockButton.className = "layer-icon-button";
+    lockButton.type = "button";
+    lockButton.textContent = layer.locked ? "▣" : "▢";
+    lockButton.title = layer.locked ? "Unlock layer" : "Lock layer";
+    lockButton.setAttribute("aria-label", lockButton.title);
+    lockButton.setAttribute("aria-pressed", String(layer.locked));
+    lockButton.disabled = isFilling || isHistoryRestoring || isProjectLoading;
+    lockButton.addEventListener("click", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) return;
+      layerManager.setLayerLocked(layer.id, !layer.locked);
+      refreshLayerPanel();
+      rememberCanvas();
+    });
+
+    const renameInput = document.createElement("input");
+    renameInput.className = "layer-name-input";
+    renameInput.type = "text";
+    renameInput.value = layer.name;
+    renameInput.maxLength = 80;
+    renameInput.setAttribute("aria-label", `Rename ${layer.name}`);
+    renameInput.disabled = isFilling || isHistoryRestoring || isProjectLoading;
+    renameInput.addEventListener("change", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) {
+        refreshLayerPanel();
+        return;
+      }
+      if (!layerManager.renameLayer(layer.id, renameInput.value)) {
+        announce("Layer names cannot be empty.");
+      }
+      refreshLayerPanel();
+      rememberCanvas();
+    });
+
+    const reorderButtons = document.createElement("span");
+    reorderButtons.className = "layer-reorder-buttons";
+    const moveUpButton = document.createElement("button");
+    moveUpButton.className = "layer-icon-button";
+    moveUpButton.type = "button";
+    moveUpButton.textContent = "↑";
+    moveUpButton.title = "Move layer up";
+    moveUpButton.setAttribute("aria-label", moveUpButton.title);
+    moveUpButton.disabled =
+      isFilling ||
+      isHistoryRestoring ||
+      isProjectLoading ||
+      layerIndex === layerManager.layers.length - 1;
+    moveUpButton.addEventListener("click", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) return;
+      if (layerManager.moveLayer(layer.id, 1)) {
+        refreshLayerPanel();
+        renderLayers();
+        rememberCanvas();
+      }
+    });
+
+    const moveDownButton = document.createElement("button");
+    moveDownButton.className = "layer-icon-button";
+    moveDownButton.type = "button";
+    moveDownButton.textContent = "↓";
+    moveDownButton.title = "Move layer down";
+    moveDownButton.setAttribute("aria-label", moveDownButton.title);
+    moveDownButton.disabled =
+      isFilling || isHistoryRestoring || isProjectLoading || layerIndex === 0;
+    moveDownButton.addEventListener("click", () => {
+      if (isFilling || isHistoryRestoring || isProjectLoading) return;
+      if (layerManager.moveLayer(layer.id, -1)) {
+        refreshLayerPanel();
+        renderLayers();
+        rememberCanvas();
+      }
+    });
+
+    reorderButtons.append(moveUpButton, moveDownButton);
+    row.append(selectButton, renameInput, visibilityButton, lockButton, reorderButtons);
+    layerList.append(row);
+  }
+  updateLayerActionAvailability();
+}
+
+function selectCurrentLayer(id: string): void {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  if (!layerManager.setActiveLayer(id)) return;
+  context = layerManager.activeLayer.context;
+  refreshLayerPanel();
+}
+
+addLayerButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  const layer = layerManager.addLayer();
+  selectCurrentLayer(layer.id);
+  renderLayers();
+  rememberCanvas();
+});
+
+duplicateLayerButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  const duplicate = layerManager.duplicateLayer(layerManager.activeLayer.id);
+  if (!duplicate) {
+    announce("Couldn't duplicate the selected layer.");
+    return;
+  }
+  selectCurrentLayer(duplicate.id);
+  renderLayers();
+  rememberCanvas();
+});
+
+mergeLayerButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  if (!layerManager.mergeDown(layerManager.activeLayer.id)) {
+    announce("This layer cannot be merged down without changing its appearance.");
+    return;
+  }
+  context = layerManager.activeLayer.context;
+  refreshLayerPanel();
+  renderLayers();
+  rememberCanvas();
+});
+
+flattenLayersButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  layerManager.flattenArtwork();
+  context = layerManager.activeLayer.context;
+  refreshLayerPanel();
+  renderLayers();
+  rememberCanvas();
+  announce("Visible artwork flattened into one layer.");
+});
+
+deleteLayerButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  if (!layerManager.deleteLayer(layerManager.activeLayer.id)) return;
+  context = layerManager.activeLayer.context;
+  refreshLayerPanel();
+  renderLayers();
+  rememberCanvas();
+});
+
+layerOpacityInput.addEventListener("input", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  const opacity = Number(layerOpacityInput.value) / 100;
+  layerManager.setLayerOpacity(layerManager.activeLayer.id, opacity);
+  layerOpacityValue.value = `${layerOpacityInput.value}%`;
+  renderLayers();
+});
+
+layerOpacityInput.addEventListener("change", rememberCanvas);
+
 function scheduleSave(): void {
   window.clearTimeout(saveTimer);
   updateSaveStatus("Saving…");
   saveTimer = window.setTimeout(() => {
     try {
-      const savedDrawing: SavedDrawing = {
-        drawing: canvas.toDataURL("image/png"),
-        background: backgroundInput.value,
-      };
-      window.localStorage.setItem(storageKey, JSON.stringify(savedDrawing));
+      window.localStorage.setItem(projectStorageKey, JSON.stringify(createCurrentProject()));
       updateSaveStatus("Saved on this device");
     } catch (error) {
       updateSaveStatus("Could not save");
@@ -646,47 +905,100 @@ function scheduleSave(): void {
   }, 400);
 }
 
-function loadSavedDrawing(): void {
-  const savedValue = window.localStorage.getItem(storageKey);
-  if (!savedValue) {
-    rememberCanvas();
+function initializeHistory(): void {
+  const snapshot = JSON.stringify(createCurrentProject(historySnapshotTime));
+  history = [snapshot];
+  historyCharacters = snapshot.length;
+  historyIndex = 0;
+  updateHistoryButtons();
+}
+
+async function loadSavedDrawing(): Promise<void> {
+  let projectValue: string | null;
+  let legacyValue: string | null;
+  try {
+    projectValue = window.localStorage.getItem(projectStorageKey);
+    legacyValue = window.localStorage.getItem(legacyStorageKey);
+  } catch (error) {
+    renderLayers();
+    refreshLayerPanel();
+    initializeHistory();
+    updateSaveStatus("Browser storage is unavailable");
+    announce("Couldn't read saved work from this browser.");
+    console.error("Could not access drawing storage.", error);
     return;
   }
 
-  try {
-    const savedDrawing = JSON.parse(savedValue) as SavedDrawing;
-    if (
-      typeof savedDrawing.drawing !== "string" ||
-      typeof savedDrawing.background !== "string"
-    ) {
-      throw new Error("Saved drawing data has an unexpected format.");
-    }
+  if (projectValue) {
+    try {
+      const savedProject: unknown = JSON.parse(projectValue);
+      if (
+        !isProjectDocument(savedProject) ||
+        savedProject.width !== canvas.width ||
+        savedProject.height !== canvas.height
+      ) {
+        throw new Error("The saved project is invalid or has unsupported canvas dimensions.");
+      }
 
-    backgroundInput.value = savedDrawing.background;
-    canvasPaper.style.backgroundColor = savedDrawing.background;
-    const image = new Image();
-    image.onload = () => {
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const snapshot = canvas.toDataURL("image/png");
-      history = [snapshot];
-      historyCharacters = snapshot.length;
-      historyIndex = 0;
-      updateHistoryButtons();
-      updateNavigator();
+      await layerManager.restore(savedProject);
+      projectId = savedProject.projectId;
+      projectName = savedProject.projectName;
+      backgroundInput.value = savedProject.background;
+      canvasPaper.style.backgroundColor = savedProject.background;
+      context = layerManager.activeLayer.context;
+      renderLayers();
+      refreshLayerPanel();
+      initializeHistory();
       updateSaveStatus("Your last drawing is back");
-    };
-    image.onerror = () => {
-      window.localStorage.removeItem(storageKey);
+      return;
+    } catch (error) {
+      updateSaveStatus("Saved project couldn't be loaded");
+      announce("Couldn't load the saved project. Your saved data was kept.");
+      console.error("Could not load the saved project.", error);
+    }
+  }
+
+  if (legacyValue) {
+    try {
+      const savedDrawing: unknown = JSON.parse(legacyValue);
+      if (!isLegacySavedDrawing(savedDrawing)) {
+        throw new Error("The legacy drawing data has an unexpected format.");
+      }
+
+      const image = new Image();
+      image.src = savedDrawing.drawing;
+      await image.decode();
+      backgroundInput.value = savedDrawing.background;
+      canvasPaper.style.backgroundColor = savedDrawing.background;
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      renderLayers();
+      refreshLayerPanel();
+      history = [];
+      historyCharacters = 0;
+      historyIndex = -1;
       rememberCanvas();
-      updateSaveStatus("Ready to draw");
-      console.error("Could not load the saved drawing image.");
-    };
-    image.src = savedDrawing.drawing;
-  } catch (error) {
-    window.localStorage.removeItem(storageKey);
+      updateSaveStatus("Your last drawing was migrated to editable layers");
+      return;
+    } catch (error) {
+      renderLayers();
+      refreshLayerPanel();
+      initializeHistory();
+      updateSaveStatus("Saved drawing couldn't be loaded");
+      announce("Couldn't load the previous drawing. Your saved data was kept.");
+      console.error("Could not migrate the legacy drawing.", error);
+      return;
+    }
+  }
+
+  renderLayers();
+  refreshLayerPanel();
+  if (projectValue) {
+    initializeHistory();
+  } else {
+    history = [];
+    historyCharacters = 0;
+    historyIndex = -1;
     rememberCanvas();
-    updateSaveStatus("Ready to draw");
-    console.error("Could not read the saved drawing.", error);
   }
 }
 
@@ -698,7 +1010,10 @@ for (const button of toolButtons) {
 }
 
 function interruptDrawing(): void {
-  if (gestureSnapshot) context.putImageData(gestureSnapshot, 0, 0);
+  if (gestureSnapshot) {
+    context.putImageData(gestureSnapshot, 0, 0);
+    renderLayers();
+  }
   isDrawing = false;
   drawingPointerId = null;
   previousBrushPoint = null;
@@ -739,7 +1054,13 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
     }
   }
 
-  if (event.button !== 0 || isFilling || isHistoryRestoring || isTouchNavigationActive) return;
+  if (
+    event.button !== 0 ||
+    isFilling ||
+    isHistoryRestoring ||
+    isProjectLoading ||
+    isTouchNavigationActive
+  ) return;
 
   event.preventDefault();
   canvasViewport.focus({ preventScroll: true });
@@ -769,6 +1090,11 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
 
   if (activeTool === "bucket") {
     void fillCanvasRegion(point);
+    return;
+  }
+
+  if (!layerManager.canEditActiveLayer) {
+    announce("Unlock and show the selected layer before editing it.");
     return;
   }
 
@@ -1044,14 +1370,19 @@ redoButton.addEventListener("click", () => {
 });
 
 clearButton.addEventListener("click", () => {
-  if (isFilling || isHistoryRestoring) return;
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  if (!layerManager.canEditActiveLayer) {
+    announce("Unlock and show the selected layer before clearing it.");
+    return;
+  }
   context.clearRect(0, 0, canvas.width, canvas.height);
+  renderLayers();
   rememberCanvas();
   announce("Canvas cleared.");
 });
 
 saveButton.addEventListener("click", () => {
-  if (isFilling || isHistoryRestoring) return;
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
   const exportCanvas = document.createElement("canvas");
   exportCanvas.width = canvas.width;
   exportCanvas.height = canvas.height;
@@ -1222,4 +1553,15 @@ fillToleranceValue.value = fillToleranceInput.value;
 layoutCanvasPaper();
 viewport.fitToScreen(getViewportSize(), getArtworkSize());
 applyViewport();
-loadSavedDrawing();
+updateHistoryButtons();
+void loadSavedDrawing()
+  .catch((error: unknown) => {
+    updateSaveStatus("Saved project couldn't be loaded");
+    announce("Couldn't load saved work from this browser.");
+    console.error("Could not initialize the drawing project.", error);
+  })
+  .finally(() => {
+    isProjectLoading = false;
+    refreshLayerPanel();
+    updateHistoryButtons();
+  });

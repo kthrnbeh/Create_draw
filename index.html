@@ -191,6 +191,24 @@
             <button class="text-button" id="centerImageButton" type="button" hidden>Center image</button>
           </section>
 
+          <section class="control-group layers-group" aria-labelledby="layersHeading">
+            <div class="layers-heading">
+              <h2 id="layersHeading" class="section-label">Layers</h2>
+              <button class="layer-action-button" id="addLayerButton" type="button">＋ Add</button>
+            </div>
+            <ol class="layer-list" id="layerList" aria-label="Artwork layers"></ol>
+            <label class="control-label range-label" for="layerOpacity">
+              <span>Selected layer opacity</span><output id="layerOpacityValue" for="layerOpacity">100%</output>
+            </label>
+            <input id="layerOpacity" class="range-input" type="range" min="0" max="100" value="100" />
+            <div class="layer-actions">
+              <button class="layer-action-button" id="duplicateLayerButton" type="button">Duplicate</button>
+              <button class="layer-action-button" id="mergeLayerButton" type="button">Merge down</button>
+              <button class="layer-action-button" id="flattenLayersButton" type="button">Flatten</button>
+              <button class="layer-action-button layer-delete-button" id="deleteLayerButton" type="button">Delete</button>
+            </div>
+          </section>
+
           <button class="clear-button" id="clearButton" type="button">
             <span aria-hidden="true">⌫</span> Clear canvas
           </button>
