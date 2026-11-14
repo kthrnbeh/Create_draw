@@ -24,9 +24,12 @@ You can also open `index.html` with VS Code Live Server. The browser scripts are
 - Change the paper color
 - Add an image as a tracing guide and continue drawing on a separate transparent layer
 - Adjust tracing-reference opacity and keep the reference separate from artwork
+- Make uploaded or saved images traceable with Beginner, Intermediate, and Advanced outlines, real-time previews, and adjustable edge, brightness, contrast, noise, and thickness settings
+- Save original images and generated tracing guides separately in My Images, then start tracing without downloading and re-uploading
+- Show or hide the reference and add an adjustable tracing grid
+- Use the 1–100 px hard or soft eraser with an artwork-scaled cursor and the E shortcut
 - Save uploaded images and artwork to the IndexedDB-backed My Images library, then trace a saved image later
 - Export a clean PNG without the reference, or choose Export with Reference
-- Minimize the app into a compact restore control
 - Automatically save a versioned, multi-layer project in this browser
 - Download the drawing as a PNG
 
@@ -34,7 +37,7 @@ The first saved project automatically migrates the previous single-canvas drawin
 
 The artwork remains a 1200 × 800 canvas; zooming and panning change only its viewport. The tracing workspace currently supports one centered reference image. Moving, resizing, rotating, and flipping references are planned for a later phase.
 
-The minimize button collapses the drawing app inside the page; use your browser or operating system controls to minimize or close the browser window itself. The drawing is saved in browser storage on this device. Download it as a PNG to keep a separate copy.
+Create Draw is a regular webpage. Use your browser or operating system window controls to minimize or close it. The drawing is saved in browser storage on this device. Download it as a PNG to keep a separate copy.
 
 ## Build
 

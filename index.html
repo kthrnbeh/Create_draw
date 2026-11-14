@@ -41,15 +41,6 @@
           >
             Export with Reference
           </button>
-          <button
-            class="button button-quiet minimize-button"
-            id="minimizeButton"
-            type="button"
-            title="Minimize drawing app"
-            aria-label="Minimize drawing app"
-          >
-            <span aria-hidden="true">−</span><span class="action-label">Minimize</span>
-          </button>
         </div>
       </header>
 
@@ -121,6 +112,16 @@
                 </div>
               </div>
             </div>
+            <button class="eraser-quick-button" id="eraserQuickButton" type="button">
+              Eraser <span aria-hidden="true">· E</span>
+            </button>
+            <div class="tool-specific-settings eraser-settings" id="eraserSettings" hidden>
+              <span class="control-label">Eraser edge</span>
+              <div class="eraser-mode-options" role="group" aria-label="Eraser edge mode">
+                <button class="eraser-mode-button is-selected" id="hardEraserButton" type="button" aria-pressed="true">Hard</button>
+                <button class="eraser-mode-button" id="softEraserButton" type="button" aria-pressed="false">Soft</button>
+              </div>
+            </div>
             <div class="tool-specific-settings" id="bucketSettings" hidden>
               <label class="control-label range-label" for="fillTolerance">
                 <span>Fill tolerance</span><output id="fillToleranceValue" for="fillTolerance">18</output>
@@ -149,7 +150,7 @@
               </div>
             </div>
             <label class="control-label range-label" for="sizeInput">
-              <span>Brush size</span><output id="sizeValue" for="sizeInput">6 px</output>
+              <span id="sizeControlLabel">Brush size</span><output id="sizeValue" for="sizeInput">6 px</output>
             </label>
             <input id="sizeInput" class="range-input" type="range" min="1" max="48" value="6" />
             <label class="control-label preset-label" for="brushPreset">
@@ -196,6 +197,9 @@
               <span aria-hidden="true">＋</span> Add tracing image
             </label>
             <input id="traceInput" class="visually-hidden" type="file" accept="image/*" />
+            <button class="text-button make-traceable-button" id="makeTraceableButton" type="button" hidden>
+              Make It Traceable
+            </button>
             <button class="text-button" id="removeTraceButton" type="button" hidden>Remove tracing image</button>
             <button class="text-button" id="centerImageButton" type="button" hidden>Center image</button>
             <div class="trace-opacity-control" id="traceOpacityControl" hidden>
@@ -203,6 +207,20 @@
                 <span>Reference opacity</span><output id="traceOpacityValue" for="traceOpacity">28%</output>
               </label>
               <input id="traceOpacity" class="range-input" type="range" min="0" max="100" value="28" />
+              <label class="check-row" for="referenceVisibleInput">
+                <input id="referenceVisibleInput" type="checkbox" checked />
+                <span class="custom-check" aria-hidden="true"></span>
+                Show reference
+              </label>
+              <label class="check-row trace-grid-toggle" for="tracingGridInput">
+                <input id="tracingGridInput" type="checkbox" />
+                <span class="custom-check" aria-hidden="true"></span>
+                Show tracing grid
+              </label>
+              <label class="control-label range-label grid-size-label" for="tracingGridSize">
+                <span>Grid size</span><output id="tracingGridSizeValue" for="tracingGridSize">50 px</output>
+              </label>
+              <input id="tracingGridSize" class="range-input" type="range" min="10" max="100" value="50" />
             </div>
           </section>
 
@@ -259,9 +277,11 @@
             <div class="canvas-viewport" id="canvasViewport" tabindex="0" aria-label="Canvas viewport. Hold Space and drag to pan; use Control or Command and mouse wheel to zoom.">
               <div class="canvas-paper" id="canvasPaper">
                 <img id="traceImage" class="trace-image" alt="Tracing reference" hidden />
+                <div id="tracingGridOverlay" class="tracing-grid-overlay" aria-hidden="true" hidden></div>
                 <canvas id="drawingCanvas" width="1200" height="800" aria-label="Blank drawing canvas. Use a pointer to draw.">
                   Your browser does not support canvas drawing.
                 </canvas>
+                <div id="eraserCursor" class="eraser-cursor-preview" aria-hidden="true" hidden></div>
               </div>
             </div>
           </div>
@@ -278,12 +298,78 @@
           </details>
         </section>
       </main>
+      <section class="tracing-workbench" id="tracingWorkbench" aria-labelledby="tracingDialogTitle" hidden>
+        <div class="tracing-workbench-header">
+          <div>
+            <span class="eyebrow">MAKE IT TRACEABLE</span>
+            <h2 id="tracingDialogTitle">Create a tracing guide</h2>
+            <p id="tracingSourceName">Adjust the outline to make it yours.</p>
+          </div>
+          <button class="dialog-close-button" id="closeTracingDialogButton" type="button" aria-label="Close tracing generator">×</button>
+        </div>
+        <div class="tracing-previews">
+          <figure>
+            <figcaption>Original</figcaption>
+            <canvas id="tracingOriginalPreview" class="tracing-preview-canvas" aria-label="Original image preview"></canvas>
+          </figure>
+          <figure>
+            <figcaption>Tracing guide</figcaption>
+            <canvas id="tracingOutputPreview" class="tracing-preview-canvas" aria-label="Generated tracing guide preview"></canvas>
+          </figure>
+        </div>
+        <div class="tracing-controls">
+          <label class="tracing-control" for="tracingDifficulty">
+            <span>Difficulty</span>
+            <select id="tracingDifficulty" class="control-select">
+              <option value="beginner">Beginner</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advanced">Advanced</option>
+            </select>
+          </label>
+          <label class="tracing-control" for="tracingBrightness">
+            <span>Brightness <output id="tracingBrightnessValue" for="tracingBrightness">0</output></span>
+            <input id="tracingBrightness" type="range" min="-100" max="100" value="0" />
+          </label>
+          <label class="tracing-control" for="tracingContrast">
+            <span>Contrast <output id="tracingContrastValue" for="tracingContrast">12</output></span>
+            <input id="tracingContrast" type="range" min="-100" max="100" value="12" />
+          </label>
+          <label class="tracing-control" for="tracingEdgeSensitivity">
+            <span>Edge sensitivity <output id="tracingEdgeSensitivityValue" for="tracingEdgeSensitivity">1.60</output></span>
+            <input id="tracingEdgeSensitivity" type="range" min="0.25" max="4" step="0.05" value="1.6" />
+          </label>
+          <label class="tracing-control" for="tracingThreshold">
+            <span>Detail threshold <output id="tracingThresholdValue" for="tracingThreshold">105</output></span>
+            <input id="tracingThreshold" type="range" min="1" max="255" value="105" />
+          </label>
+          <label class="tracing-control" for="tracingNoiseReduction">
+            <span>Noise reduction <output id="tracingNoiseReductionValue" for="tracingNoiseReduction">2</output></span>
+            <input id="tracingNoiseReduction" type="range" min="0" max="4" step="1" value="2" />
+          </label>
+          <label class="tracing-control" for="tracingOutlineThickness">
+            <span>Outline thickness <output id="tracingOutlineThicknessValue" for="tracingOutlineThickness">2</output></span>
+            <input id="tracingOutlineThickness" type="range" min="1" max="5" step="1" value="2" />
+          </label>
+          <label class="check-row" for="tracingGrayscale">
+            <input id="tracingGrayscale" type="checkbox" checked />
+            <span class="custom-check" aria-hidden="true"></span>
+            Grayscale edges
+          </label>
+          <label class="check-row" for="tracingInvert">
+            <input id="tracingInvert" type="checkbox" />
+            <span class="custom-check" aria-hidden="true"></span>
+            Invert black and white
+          </label>
+          <p class="tracing-status" id="tracingStatus" role="status" aria-live="polite"></p>
+        </div>
+        <div class="tracing-workbench-actions">
+          <button class="layer-action-button" id="resetTracingSettingsButton" type="button">Reset settings</button>
+          <span></span>
+          <button class="layer-action-button" id="saveTracingGuideButton" type="button">Save guide to My Images</button>
+          <button class="button button-primary" id="startTracingButton" type="button">Start tracing</button>
+        </div>
+      </section>
       <footer>Made for doodles, daydreams, and everything in between.</footer>
-      <div class="minimized-window" id="minimizedWindow" hidden>
-        <span class="brand-mark" aria-hidden="true">✳</span>
-        <span class="minimized-title">Create Draw</span>
-        <button class="restore-button" id="restoreButton" type="button">Restore</button>
-      </div>
     </div>
     <script type="module" src="./browser-build/main.js"></script>
   </body>

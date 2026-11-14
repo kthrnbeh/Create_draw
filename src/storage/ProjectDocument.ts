@@ -2,6 +2,10 @@ import {
   isSerializedLayerState,
   type SerializedLayerState,
 } from "../layers/LayerManager.js";
+import {
+  isTracingSettings,
+  type TracingSettings,
+} from "../tracing/OutlineGenerator.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -14,7 +18,12 @@ export interface ProjectDocument extends SerializedLayerState {
   background: string;
   updatedAt: string;
   referenceAssetId?: string | null;
+  originalReferenceAssetId?: string | null;
   referenceOpacity?: number;
+  referenceVisible?: boolean;
+  tracingGridVisible?: boolean;
+  tracingGridSize?: number;
+  traceSettings?: TracingSettings | null;
 }
 
 export interface LegacySavedDrawing {
@@ -32,6 +41,11 @@ export function createProjectDocument(
   updatedAt = new Date().toISOString(),
   referenceAssetId: string | null = null,
   referenceOpacity = 0.28,
+  referenceVisible = true,
+  originalReferenceAssetId: string | null = null,
+  tracingGridVisible = false,
+  tracingGridSize = 50,
+  traceSettings: TracingSettings | null = null,
 ): ProjectDocument {
   return {
     ...layerState,
@@ -43,7 +57,12 @@ export function createProjectDocument(
     background,
     updatedAt,
     referenceAssetId,
+    originalReferenceAssetId,
     referenceOpacity,
+    referenceVisible,
+    tracingGridVisible,
+    tracingGridSize,
+    traceSettings,
   };
 }
 
@@ -71,6 +90,22 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
         Number.isFinite(project.referenceOpacity) &&
         project.referenceOpacity >= 0 &&
         project.referenceOpacity <= 1)) &&
+    (project.originalReferenceAssetId === undefined ||
+      project.originalReferenceAssetId === null ||
+      (typeof project.originalReferenceAssetId === "string" &&
+        project.originalReferenceAssetId.length > 0)) &&
+    (project.referenceVisible === undefined ||
+      typeof project.referenceVisible === "boolean") &&
+    (project.tracingGridVisible === undefined ||
+      typeof project.tracingGridVisible === "boolean") &&
+    (project.tracingGridSize === undefined ||
+      (typeof project.tracingGridSize === "number" &&
+        Number.isFinite(project.tracingGridSize) &&
+        project.tracingGridSize >= 10 &&
+        project.tracingGridSize <= 100)) &&
+    (project.traceSettings === undefined ||
+      project.traceSettings === null ||
+      isTracingSettings(project.traceSettings)) &&
     isSerializedLayerState(project)
   );
 }

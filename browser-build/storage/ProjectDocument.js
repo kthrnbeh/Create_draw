@@ -1,6 +1,7 @@
 import { isSerializedLayerState, } from "../layers/LayerManager.js";
+import { isTracingSettings, } from "../tracing/OutlineGenerator.js";
 export const PROJECT_SCHEMA_VERSION = 1;
-export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString(), referenceAssetId = null, referenceOpacity = 0.28) {
+export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString(), referenceAssetId = null, referenceOpacity = 0.28, referenceVisible = true, originalReferenceAssetId = null, tracingGridVisible = false, tracingGridSize = 50, traceSettings = null) {
     return {
         ...layerState,
         schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -11,7 +12,12 @@ export function createProjectDocument(projectId, projectName, width, height, bac
         background,
         updatedAt,
         referenceAssetId,
+        originalReferenceAssetId,
         referenceOpacity,
+        referenceVisible,
+        tracingGridVisible,
+        tracingGridSize,
+        traceSettings,
     };
 }
 export function isProjectDocument(value) {
@@ -38,6 +44,22 @@ export function isProjectDocument(value) {
                 Number.isFinite(project.referenceOpacity) &&
                 project.referenceOpacity >= 0 &&
                 project.referenceOpacity <= 1)) &&
+        (project.originalReferenceAssetId === undefined ||
+            project.originalReferenceAssetId === null ||
+            (typeof project.originalReferenceAssetId === "string" &&
+                project.originalReferenceAssetId.length > 0)) &&
+        (project.referenceVisible === undefined ||
+            typeof project.referenceVisible === "boolean") &&
+        (project.tracingGridVisible === undefined ||
+            typeof project.tracingGridVisible === "boolean") &&
+        (project.tracingGridSize === undefined ||
+            (typeof project.tracingGridSize === "number" &&
+                Number.isFinite(project.tracingGridSize) &&
+                project.tracingGridSize >= 10 &&
+                project.tracingGridSize <= 100)) &&
+        (project.traceSettings === undefined ||
+            project.traceSettings === null ||
+            isTracingSettings(project.traceSettings)) &&
         isSerializedLayerState(project));
 }
 export function isLegacySavedDrawing(value) {

@@ -102,7 +102,12 @@ test("stores, lists, retrieves, and deletes image assets", async () => {
   assert.equal((await manager.listImages()).length, 1);
   assert.equal((await manager.getImage(saved.id))?.blob, blob);
 
+  const guide = await manager.saveImage(blob, "dragon outline", "processed");
+  assert.equal(guide.source, "processed");
+  assert.equal((await manager.listImages()).length, 2);
+
   await manager.deleteImage(saved.id);
+  await manager.deleteImage(guide.id);
   assert.deepEqual(await manager.listImages(), []);
   assert.equal(await manager.getImage(saved.id), undefined);
 });

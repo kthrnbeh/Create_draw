@@ -1,5 +1,9 @@
 import { floodFillPixels } from "./floodFill.js";
-import { AssetManager, type ImageAssetSource } from "./core/AssetManager.js";
+import {
+  AssetManager,
+  type ImageAssetMetadata,
+  type ImageAssetSource,
+} from "./core/AssetManager.js";
 import { MAX_ZOOM, MIN_ZOOM, Viewport } from "./core/Viewport.js";
 import { LayerManager } from "./layers/LayerManager.js";
 import {
@@ -12,6 +16,14 @@ import {
   drawBrushSegment,
   type BrushPreset,
 } from "./tools/BrushStrokes.js";
+import {
+  DEFAULT_TRACING_SETTINGS,
+  TRACING_PRESETS,
+  isTracingSettings,
+  type RasterImageData,
+  type TracingSettings,
+} from "./tracing/OutlineGenerator.js";
+import { OutlineProcessor } from "./tracing/OutlineProcessor.js";
 
 type Tool =
   | "brush"
@@ -55,12 +67,15 @@ colorSampleCanvas.height = canvas.height;
 const colorSampleContext = getCanvasContext(colorSampleCanvas);
 
 const saveStatus = getRequiredElement<HTMLElement>("#saveStatus");
-const appShell = getRequiredElement<HTMLDivElement>(".app-shell");
 const canvasViewport = getRequiredElement<HTMLDivElement>("#canvasViewport");
 const toolPicker = getRequiredElement<HTMLDivElement>("#toolPicker");
 const toolPickerButton = getRequiredElement<HTMLButtonElement>("#toolPickerButton");
 const toolPickerPanel = getRequiredElement<HTMLDivElement>("#toolPickerPanel");
 const selectedToolName = getRequiredElement<HTMLSpanElement>("#selectedToolName");
+const eraserQuickButton = getRequiredElement<HTMLButtonElement>("#eraserQuickButton");
+const eraserSettings = getRequiredElement<HTMLDivElement>("#eraserSettings");
+const hardEraserButton = getRequiredElement<HTMLButtonElement>("#hardEraserButton");
+const softEraserButton = getRequiredElement<HTMLButtonElement>("#softEraserButton");
 const bucketSettings = getRequiredElement<HTMLDivElement>("#bucketSettings");
 const canvasMessage = getRequiredElement<HTMLElement>("#canvasMessage");
 const colorInput = getRequiredElement<HTMLInputElement>("#colorInput");
@@ -68,6 +83,7 @@ const colorValue = getRequiredElement<HTMLElement>("#colorValue");
 const colorPreview = getRequiredElement<HTMLElement>("#colorPreview");
 const sizeInput = getRequiredElement<HTMLInputElement>("#sizeInput");
 const sizeValue = getRequiredElement<HTMLOutputElement>("#sizeValue");
+const sizeControlLabel = getRequiredElement<HTMLSpanElement>("#sizeControlLabel");
 const brushPresetInput = getRequiredElement<HTMLSelectElement>("#brushPreset");
 const brushOpacityInput = getRequiredElement<HTMLInputElement>("#brushOpacity");
 const opacityValue = getRequiredElement<HTMLOutputElement>("#opacityValue");
@@ -83,6 +99,13 @@ const centerImageButton = getRequiredElement<HTMLButtonElement>("#centerImageBut
 const traceOpacityControl = getRequiredElement<HTMLDivElement>("#traceOpacityControl");
 const traceOpacityInput = getRequiredElement<HTMLInputElement>("#traceOpacity");
 const traceOpacityValue = getRequiredElement<HTMLOutputElement>("#traceOpacityValue");
+const makeTraceableButton = getRequiredElement<HTMLButtonElement>("#makeTraceableButton");
+const referenceVisibleInput = getRequiredElement<HTMLInputElement>("#referenceVisibleInput");
+const tracingGridInput = getRequiredElement<HTMLInputElement>("#tracingGridInput");
+const tracingGridSizeInput = getRequiredElement<HTMLInputElement>("#tracingGridSize");
+const tracingGridSizeValue = getRequiredElement<HTMLOutputElement>("#tracingGridSizeValue");
+const tracingGridOverlay = getRequiredElement<HTMLDivElement>("#tracingGridOverlay");
+const eraserCursor = getRequiredElement<HTMLDivElement>("#eraserCursor");
 const assetLibrary = getRequiredElement<HTMLUListElement>("#assetLibrary");
 const assetLibraryMessage = getRequiredElement<HTMLElement>("#assetLibraryMessage");
 const saveArtworkButton = getRequiredElement<HTMLButtonElement>("#saveArtworkButton");
@@ -91,9 +114,6 @@ const undoButton = getRequiredElement<HTMLButtonElement>("#undoButton");
 const redoButton = getRequiredElement<HTMLButtonElement>("#redoButton");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clearButton");
 const saveButton = getRequiredElement<HTMLButtonElement>("#saveButton");
-const minimizeButton = getRequiredElement<HTMLButtonElement>("#minimizeButton");
-const minimizedWindow = getRequiredElement<HTMLDivElement>("#minimizedWindow");
-const restoreButton = getRequiredElement<HTMLButtonElement>("#restoreButton");
 const zoomOutButton = getRequiredElement<HTMLButtonElement>("#zoomOutButton");
 const zoomInButton = getRequiredElement<HTMLButtonElement>("#zoomInButton");
 const zoomValue = getRequiredElement<HTMLOutputElement>("#zoomValue");
@@ -111,6 +131,39 @@ const duplicateLayerButton = getRequiredElement<HTMLButtonElement>("#duplicateLa
 const mergeLayerButton = getRequiredElement<HTMLButtonElement>("#mergeLayerButton");
 const flattenLayersButton = getRequiredElement<HTMLButtonElement>("#flattenLayersButton");
 const deleteLayerButton = getRequiredElement<HTMLButtonElement>("#deleteLayerButton");
+const tracingWorkbench = getRequiredElement<HTMLElement>("#tracingWorkbench");
+const closeTracingDialogButton = getRequiredElement<HTMLButtonElement>("#closeTracingDialogButton");
+const tracingSourceName = getRequiredElement<HTMLElement>("#tracingSourceName");
+const tracingOriginalPreview = getRequiredElement<HTMLCanvasElement>("#tracingOriginalPreview");
+const tracingOutputPreview = getRequiredElement<HTMLCanvasElement>("#tracingOutputPreview");
+const tracingDifficultyInput = getRequiredElement<HTMLSelectElement>("#tracingDifficulty");
+const tracingBrightnessInput = getRequiredElement<HTMLInputElement>("#tracingBrightness");
+const tracingContrastInput = getRequiredElement<HTMLInputElement>("#tracingContrast");
+const tracingEdgeSensitivityInput = getRequiredElement<HTMLInputElement>("#tracingEdgeSensitivity");
+const tracingThresholdInput = getRequiredElement<HTMLInputElement>("#tracingThreshold");
+const tracingNoiseReductionInput = getRequiredElement<HTMLInputElement>("#tracingNoiseReduction");
+const tracingOutlineThicknessInput = getRequiredElement<HTMLInputElement>("#tracingOutlineThickness");
+const tracingGrayscaleInput = getRequiredElement<HTMLInputElement>("#tracingGrayscale");
+const tracingInvertInput = getRequiredElement<HTMLInputElement>("#tracingInvert");
+const tracingStatus = getRequiredElement<HTMLElement>("#tracingStatus");
+const resetTracingSettingsButton = getRequiredElement<HTMLButtonElement>("#resetTracingSettingsButton");
+const saveTracingGuideButton = getRequiredElement<HTMLButtonElement>("#saveTracingGuideButton");
+const startTracingButton = getRequiredElement<HTMLButtonElement>("#startTracingButton");
+const tracingProcessor = new OutlineProcessor();
+const tracingPreviewContext = getCanvasContext(tracingOriginalPreview);
+const tracingOutputContext = getCanvasContext(tracingOutputPreview);
+const tracingControlMap: Array<{
+  input: HTMLInputElement;
+  output: HTMLOutputElement;
+  digits?: number;
+}> = [
+  { input: tracingBrightnessInput, output: getRequiredElement<HTMLOutputElement>("#tracingBrightnessValue") },
+  { input: tracingContrastInput, output: getRequiredElement<HTMLOutputElement>("#tracingContrastValue") },
+  { input: tracingEdgeSensitivityInput, output: getRequiredElement<HTMLOutputElement>("#tracingEdgeSensitivityValue"), digits: 2 },
+  { input: tracingThresholdInput, output: getRequiredElement<HTMLOutputElement>("#tracingThresholdValue") },
+  { input: tracingNoiseReductionInput, output: getRequiredElement<HTMLOutputElement>("#tracingNoiseReductionValue") },
+  { input: tracingOutlineThicknessInput, output: getRequiredElement<HTMLOutputElement>("#tracingOutlineThicknessValue") },
+];
 
 const projectStorageKey = "create-draw-project-v1";
 const legacyStorageKey = "create-draw-canvas-v1";
@@ -140,6 +193,8 @@ const toolLabels: Record<Tool, string> = {
 
 let activeTool: Tool = "brush";
 let lastDrawingTool: Tool = "brush";
+let toolBeforeEraser: Tool = "brush";
+let isSoftEraser = false;
 let isDrawing = false;
 let isPanning = false;
 let isFilling = false;
@@ -155,16 +210,38 @@ let drawingPointerId: number | null = null;
 let pinchMidpoint: { x: number; y: number } | null = null;
 let pinchDistance = 0;
 let isTouchNavigationActive = false;
+let lastEraserCanvasPoint: { x: number; y: number } | null = null;
 const touchPoints = new Map<number, { x: number; y: number }>();
 const viewport = new Viewport();
 let drawingSnapshot: ImageData | null = null;
 let gestureSnapshot: ImageData | null = null;
 let traceObjectUrl: string | null = null;
 let currentReferenceAssetId: string | null = null;
+let currentOriginalReferenceAssetId: string | null = null;
+let currentReferenceBlob: Blob | null = null;
+let currentReferenceAssetPromise: Promise<ImageAssetMetadata> | null = null;
+let currentReferenceVisible = true;
+let tracingGridVisible = false;
+let tracingGridSize = 50;
+let traceSettings: TracingSettings | null = null;
 let saveTimer: number | undefined;
 let history: string[] = [];
 let historyIndex = -1;
 let historyCharacters = 0;
+let selectedTracingBlob: Blob | null = null;
+let selectedTracingAssetId: string | null = null;
+let selectedTracingSource: ImageAssetSource = "upload";
+let selectedTracingName = "";
+let selectedTracingFromCurrentReference = false;
+let selectedTracingPixels: RasterImageData | null = null;
+let tracingSourceGeneration = 0;
+let tracingPreviewGeneration = 0;
+let tracingDebounceTimer: number | undefined;
+let savedTracingGuideId: string | null = null;
+let latestProcessedTracingImage: RasterImageData | null = null;
+let latestTracingSettings: TracingSettings | null = null;
+let isTracingProcessing = false;
+let isTracingSaving = false;
 
 context.lineCap = "round";
 context.lineJoin = "round";
@@ -187,6 +264,20 @@ function updateHistoryButtons(): void {
   saveArtworkButton.disabled = isBusy || isAssetSaving;
   traceOpacityInput.disabled = isBusy || traceImage.hidden;
   traceInput.disabled = isBusy;
+  makeTraceableButton.disabled = isBusy || !currentReferenceBlob;
+  saveTracingGuideButton.disabled =
+    isBusy || isTracingProcessing || isTracingSaving || !latestProcessedTracingImage;
+  startTracingButton.disabled =
+    isBusy || isTracingProcessing || isTracingSaving || !latestProcessedTracingImage;
+  tracingDifficultyInput.disabled = isBusy || isTracingSaving;
+  tracingGrayscaleInput.disabled = isBusy || isTracingSaving;
+  tracingInvertInput.disabled = isBusy || isTracingSaving;
+  for (const { input } of tracingControlMap) {
+    input.disabled = isBusy || isTracingSaving;
+  }
+  referenceVisibleInput.disabled = isBusy || traceImage.hidden;
+  tracingGridInput.disabled = isBusy || traceImage.hidden;
+  tracingGridSizeInput.disabled = isBusy || traceImage.hidden;
   removeTraceButton.disabled = isBusy;
   centerImageButton.disabled = isBusy;
   exportWithReferenceButton.disabled =
@@ -208,12 +299,47 @@ function createCurrentProject(
     updatedAt,
     currentReferenceAssetId,
     Number(traceOpacityInput.value) / 100,
+    currentReferenceVisible,
+    currentOriginalReferenceAssetId,
+    tracingGridVisible,
+    tracingGridSize,
+    traceSettings,
   );
 }
 
 function renderLayers(): void {
   layerManager.render(displayContext);
   updateNavigator();
+}
+
+function updateReferenceVisibility(): void {
+  referenceVisibleInput.checked = currentReferenceVisible;
+  traceImage.style.visibility = currentReferenceVisible ? "visible" : "hidden";
+  tracingGridOverlay.hidden =
+    traceImage.hidden || !tracingGridVisible || !currentReferenceVisible;
+  tracingGridInput.checked = tracingGridVisible;
+  tracingGridSizeInput.value = String(tracingGridSize);
+  tracingGridSizeValue.value = `${tracingGridSize} px`;
+  tracingGridOverlay.style.backgroundSize = `${tracingGridSize}px ${tracingGridSize}px`;
+  tracingGridOverlay.style.backgroundImage =
+    "linear-gradient(to right, rgba(89, 84, 76, 0.26) 1px, transparent 1px), " +
+    "linear-gradient(to bottom, rgba(89, 84, 76, 0.26) 1px, transparent 1px)";
+  updateNavigator();
+  updateHistoryButtons();
+}
+
+function updateEraserCursor(point: { x: number; y: number }): void {
+  if (activeTool !== "eraser") {
+    eraserCursor.hidden = true;
+    return;
+  }
+  const diameter = Number(sizeInput.value);
+  eraserCursor.hidden = false;
+  eraserCursor.classList.toggle("is-soft", isSoftEraser);
+  eraserCursor.style.width = `${diameter}px`;
+  eraserCursor.style.height = `${diameter}px`;
+  eraserCursor.style.left = `${point.x - diameter / 2}px`;
+  eraserCursor.style.top = `${point.y - diameter / 2}px`;
 }
 
 function rememberCanvas(): void {
@@ -287,9 +413,15 @@ async function restoreCanvas(index: number): Promise<void> {
     context = layerManager.activeLayer.context;
     backgroundInput.value = project.background;
     canvasPaper.style.backgroundColor = project.background;
+    tracingGridVisible = project.tracingGridVisible ?? false;
+    tracingGridSize = project.tracingGridSize ?? 50;
+    traceSettings = project.traceSettings ?? null;
     await restoreProjectReference(
       project.referenceAssetId ?? null,
       project.referenceOpacity ?? 0.28,
+      project.referenceVisible ?? true,
+      project.originalReferenceAssetId ?? null,
+      project.traceSettings ?? null,
     );
     refreshLayerPanel();
     renderLayers();
@@ -349,6 +481,32 @@ function drawActiveStrokeSegment(
     return;
   }
 
+  if (activeTool === "eraser") {
+    context.save();
+    context.globalCompositeOperation = "destination-out";
+    context.globalAlpha = isSoftEraser ? 0.6 : 1;
+    context.lineWidth = Number(sizeInput.value);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "#000";
+    context.shadowColor = isSoftEraser ? "rgba(0, 0, 0, 0.65)" : "transparent";
+    context.shadowBlur = isSoftEraser ? Number(sizeInput.value) * 0.35 : 0;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(
+      Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
+        ? start.x + 0.01
+        : end.x,
+      Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
+        ? start.y + 0.01
+        : end.y,
+    );
+    context.stroke();
+    context.restore();
+    renderLayers();
+    return;
+  }
+
   applyBrushStyle();
   context.beginPath();
   context.moveTo(start.x, start.y);
@@ -394,7 +552,12 @@ function updateNavigator(): void {
   navigatorContext.fillStyle = backgroundInput.value;
   navigatorContext.fillRect(0, 0, mapWidth, mapHeight);
 
-  if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
+  if (
+    !traceImage.hidden &&
+    currentReferenceVisible &&
+    traceImage.complete &&
+    traceImage.naturalWidth > 0
+  ) {
     navigatorContext.globalAlpha = Number(traceOpacityInput.value) / 100;
     drawImageContained(navigatorContext, traceImage, mapWidth, mapHeight);
     navigatorContext.globalAlpha = 1;
@@ -587,11 +750,21 @@ function drawImageContained(
   );
 }
 
-function setReferenceImage(blob: Blob, assetId: string | null): string {
+function setReferenceImage(
+  blob: Blob,
+  assetId: string | null,
+  originalAssetId: string | null = assetId,
+  settings: TracingSettings | null = null,
+): string {
   const nextObjectUrl = URL.createObjectURL(blob);
   if (traceObjectUrl) URL.revokeObjectURL(traceObjectUrl);
   traceObjectUrl = nextObjectUrl;
   currentReferenceAssetId = assetId;
+  currentOriginalReferenceAssetId = originalAssetId;
+  currentReferenceBlob = blob;
+  currentReferenceAssetPromise = null;
+  traceSettings = settings;
+  currentReferenceVisible = true;
   traceImage.src = nextObjectUrl;
   traceImage.style.objectPosition = "center center";
   traceImage.style.transform = "none";
@@ -599,9 +772,9 @@ function setReferenceImage(blob: Blob, assetId: string | null): string {
   traceImage.hidden = false;
   removeTraceButton.hidden = false;
   centerImageButton.hidden = false;
+  makeTraceableButton.hidden = false;
   traceOpacityControl.hidden = false;
-  updateNavigator();
-  updateHistoryButtons();
+  updateReferenceVisibility();
   return nextObjectUrl;
 }
 
@@ -610,12 +783,22 @@ function clearReferenceImage(preserveAssetId = false): void {
   traceImage.removeAttribute("src");
   removeTraceButton.hidden = true;
   centerImageButton.hidden = true;
+  makeTraceableButton.hidden = true;
   traceOpacityControl.hidden = true;
   if (traceObjectUrl) {
     URL.revokeObjectURL(traceObjectUrl);
     traceObjectUrl = null;
   }
-  if (!preserveAssetId) currentReferenceAssetId = null;
+  if (!preserveAssetId) {
+    currentReferenceAssetId = null;
+    currentOriginalReferenceAssetId = null;
+  }
+  currentReferenceBlob = null;
+  currentReferenceAssetPromise = null;
+  currentReferenceVisible = true;
+  tracingGridVisible = false;
+  tracingGridOverlay.hidden = true;
+  traceSettings = null;
   updateNavigator();
   updateHistoryButtons();
 }
@@ -623,6 +806,9 @@ function clearReferenceImage(preserveAssetId = false): void {
 async function restoreProjectReference(
   assetId: string | null,
   opacity: number,
+  visible = true,
+  originalAssetId: string | null = null,
+  settings: TracingSettings | null = null,
 ): Promise<void> {
   const opacityPercent = Math.round(Math.max(0, Math.min(1, opacity)) * 100);
   traceOpacityInput.value = String(opacityPercent);
@@ -631,6 +817,10 @@ async function restoreProjectReference(
 
   if (!assetId) {
     clearReferenceImage();
+    currentReferenceVisible = visible;
+    currentOriginalReferenceAssetId = originalAssetId;
+    traceSettings = settings;
+    updateReferenceVisibility();
     return;
   }
 
@@ -638,9 +828,12 @@ async function restoreProjectReference(
   try {
     const asset = await assetManager.getImage(assetId);
     if (!asset) throw new Error(`The reference asset ${assetId} is missing.`);
-    setReferenceImage(asset.blob, asset.id);
+    setReferenceImage(asset.blob, asset.id, originalAssetId ?? asset.id, settings);
+    currentReferenceVisible = visible;
+    updateReferenceVisibility();
   } catch (error) {
     clearReferenceImage(true);
+    currentOriginalReferenceAssetId = originalAssetId;
     announce("The drawing loaded, but its saved reference image is unavailable.");
     console.error("Could not restore the tracing reference.", error);
   }
@@ -680,7 +873,12 @@ function sampleVisibleColor(point: { x: number; y: number }): string {
   colorSampleContext.fillStyle = backgroundInput.value;
   colorSampleContext.fillRect(0, 0, canvas.width, canvas.height);
 
-  if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
+  if (
+    !traceImage.hidden &&
+    currentReferenceVisible &&
+    traceImage.complete &&
+    traceImage.naturalWidth > 0
+  ) {
     colorSampleContext.globalAlpha = Number(traceOpacityInput.value) / 100;
     drawImageContained(colorSampleContext, traceImage, canvas.width, canvas.height);
     colorSampleContext.globalAlpha = 1;
@@ -744,12 +942,24 @@ async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> 
 }
 
 function setActiveTool(tool: Tool): void {
+  if (tool === "eraser" && activeTool !== "eraser") {
+    toolBeforeEraser = activeTool;
+  }
   activeTool = tool;
-  if (tool !== "eyedropper" && tool !== "bucket" && tool !== "hand") {
+  if (tool !== "eyedropper" && tool !== "bucket" && tool !== "hand" && tool !== "eraser") {
     lastDrawingTool = tool;
   }
   selectedToolName.textContent = toolLabels[tool];
   bucketSettings.hidden = tool !== "bucket";
+  eraserSettings.hidden = tool !== "eraser";
+  eraserQuickButton.classList.toggle("is-selected", tool === "eraser");
+  sizeControlLabel.textContent = tool === "eraser" ? "Eraser size" : "Brush size";
+  sizeInput.max = tool === "eraser" ? "100" : "48";
+  if (Number(sizeInput.value) > Number(sizeInput.max)) {
+    sizeInput.value = sizeInput.max;
+    sizeValue.value = `${sizeInput.value} px`;
+  }
+  eraserCursor.hidden = true;
   closeToolPicker();
 
   for (const button of toolButtons) {
@@ -812,6 +1022,7 @@ const assetSourceLabels: Record<ImageAssetSource, string> = {
   generated: "Generated",
   "coloring-page": "Coloring page",
   sticker: "Sticker",
+  processed: "Tracing guide",
 };
 let assetLibraryRefreshId = 0;
 
@@ -844,7 +1055,31 @@ async function refreshAssetLibrary(): Promise<void> {
         void traceSavedImage(asset.id);
       });
 
-      row.append(details, traceButton);
+      const makeTraceable = document.createElement("button");
+      makeTraceable.className = "layer-action-button asset-trace-button";
+      makeTraceable.type = "button";
+      makeTraceable.textContent = "Make It Traceable";
+      makeTraceable.setAttribute("aria-label", `Make ${asset.name} traceable`);
+      makeTraceable.disabled = isProjectLoading || isHistoryRestoring;
+      makeTraceable.addEventListener("click", () => {
+        void assetManager.getImage(asset.id).then((storedAsset) => {
+          if (!storedAsset) throw new Error("The selected saved image no longer exists.");
+          return openTracingGenerator(
+            storedAsset.blob,
+            asset.id,
+            asset.source,
+            asset.name,
+          );
+        }).catch((error: unknown) => {
+          announce("Couldn't open that image in the tracing generator.");
+          console.error("Could not load a saved image for tracing.", error);
+        });
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "asset-actions";
+      actions.append(traceButton, makeTraceable);
+      row.append(details, actions);
       assetLibrary.append(row);
     }
   } catch (error) {
@@ -860,7 +1095,7 @@ async function traceSavedImage(assetId: string): Promise<void> {
   try {
     const asset = await assetManager.getImage(assetId);
     if (!asset) throw new Error("The selected saved image no longer exists.");
-    setReferenceImage(asset.blob, asset.id);
+    setReferenceImage(asset.blob, asset.id, asset.id, null);
     prepareTraceWorkspace();
     announce(`${asset.name} is ready to trace.`);
   } catch (error) {
@@ -879,6 +1114,262 @@ function canvasToBlob(source: HTMLCanvasElement): Promise<Blob> {
       resolve(blob);
     }, "image/png");
   });
+}
+
+function readTracingSettings(): TracingSettings {
+  const difficulty = tracingDifficultyInput.value;
+  if (
+    difficulty !== "beginner" &&
+    difficulty !== "intermediate" &&
+    difficulty !== "advanced"
+  ) {
+    throw new TypeError("Choose a valid tracing difficulty.");
+  }
+  const settings: TracingSettings = {
+    difficulty,
+    brightness: Number(tracingBrightnessInput.value),
+    contrast: Number(tracingContrastInput.value),
+    grayscale: tracingGrayscaleInput.checked,
+    edgeSensitivity: Number(tracingEdgeSensitivityInput.value),
+    threshold: Number(tracingThresholdInput.value),
+    noiseReduction: Number(tracingNoiseReductionInput.value),
+    outlineThickness: Number(tracingOutlineThicknessInput.value),
+    invert: tracingInvertInput.checked,
+  };
+  if (!isTracingSettings(settings)) {
+    throw new TypeError("The tracing controls contain invalid settings.");
+  }
+  return settings;
+}
+
+function updateTracingControlOutputs(): void {
+  for (const { input, output, digits } of tracingControlMap) {
+    const value = Number(input.value);
+    output.value = digits === undefined ? String(value) : value.toFixed(digits);
+  }
+}
+
+function applyTracingSettings(settings: TracingSettings): void {
+  tracingDifficultyInput.value = settings.difficulty;
+  tracingBrightnessInput.value = String(settings.brightness);
+  tracingContrastInput.value = String(settings.contrast);
+  tracingGrayscaleInput.checked = settings.grayscale;
+  tracingEdgeSensitivityInput.value = String(settings.edgeSensitivity);
+  tracingThresholdInput.value = String(settings.threshold);
+  tracingNoiseReductionInput.value = String(settings.noiseReduction);
+  tracingOutlineThicknessInput.value = String(settings.outlineThickness);
+  tracingInvertInput.checked = settings.invert;
+  updateTracingControlOutputs();
+  scheduleTracingPreview();
+}
+
+function scheduleTracingPreview(): void {
+  if (tracingWorkbench.hidden || !selectedTracingPixels) return;
+  window.clearTimeout(tracingDebounceTimer);
+  const generation = ++tracingPreviewGeneration;
+  latestProcessedTracingImage = null;
+  latestTracingSettings = null;
+  savedTracingGuideId = null;
+  isTracingProcessing = true;
+  tracingStatus.textContent = "Updating preview…";
+  updateHistoryButtons();
+  tracingDebounceTimer = window.setTimeout(() => {
+    void processTracingPreview(generation);
+  }, 100);
+}
+
+async function processTracingPreview(generation: number): Promise<void> {
+  try {
+    const settings = readTracingSettings();
+    const result = await tracingProcessor.process(selectedTracingPixels!, settings);
+    if (generation !== tracingPreviewGeneration || tracingWorkbench.hidden) return;
+    tracingOutputPreview.width = result.width;
+    tracingOutputPreview.height = result.height;
+    const output = tracingOutputContext.createImageData(result.width, result.height);
+    output.data.set(result.data);
+    tracingOutputContext.putImageData(output, 0, 0);
+    latestProcessedTracingImage = result;
+    latestTracingSettings = settings;
+    tracingStatus.textContent = "";
+  } catch (error) {
+    if (generation !== tracingPreviewGeneration) return;
+    latestProcessedTracingImage = null;
+    latestTracingSettings = null;
+    tracingStatus.textContent = "Couldn't generate this preview. Try another image or adjust the settings.";
+    console.error("Could not generate tracing preview.", error);
+  } finally {
+    if (generation === tracingPreviewGeneration) {
+      isTracingProcessing = false;
+      updateHistoryButtons();
+    }
+  }
+}
+
+async function openTracingGenerator(
+  blob: Blob,
+  assetId: string | null,
+  source: ImageAssetSource,
+  name: string,
+): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling || isTracingSaving) return;
+  if (!blob.type.startsWith("image/") || blob.size === 0) {
+    announce("Choose a non-empty image to make traceable.");
+    return;
+  }
+
+  selectedTracingBlob = blob;
+  selectedTracingAssetId = assetId;
+  selectedTracingFromCurrentReference =
+    (assetId !== null &&
+      (assetId === currentReferenceAssetId || assetId === currentOriginalReferenceAssetId)) ||
+    (assetId === null && blob === currentReferenceBlob);
+  selectedTracingSource = source;
+  selectedTracingName = name.trim() || "Untitled image";
+  window.clearTimeout(tracingDebounceTimer);
+  tracingPreviewGeneration += 1;
+  isTracingProcessing = false;
+  const sourceGeneration = ++tracingSourceGeneration;
+  const image = new Image();
+  selectedTracingPixels = null;
+  latestProcessedTracingImage = null;
+  latestTracingSettings = null;
+  savedTracingGuideId = null;
+  tracingSourceName.textContent = selectedTracingName;
+  tracingStatus.textContent = "Preparing image preview…";
+  tracingOriginalPreview.width = 1;
+  tracingOriginalPreview.height = 1;
+  tracingOutputPreview.width = 1;
+  tracingOutputPreview.height = 1;
+  tracingWorkbench.hidden = false;
+  tracingWorkbench.scrollIntoView({ behavior: "smooth", block: "start" });
+  updateHistoryButtons();
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    image.src = objectUrl;
+    await image.decode();
+    if (sourceGeneration !== tracingSourceGeneration) return;
+    const scale = Math.min(
+      1,
+      1400 / Math.max(image.naturalWidth, image.naturalHeight),
+    );
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    tracingOriginalPreview.width = width;
+    tracingOriginalPreview.height = height;
+    tracingOutputPreview.width = width;
+    tracingOutputPreview.height = height;
+    tracingPreviewContext.clearRect(0, 0, width, height);
+    tracingPreviewContext.drawImage(image, 0, 0, width, height);
+    selectedTracingPixels = tracingPreviewContext.getImageData(0, 0, width, height);
+    const settings =
+      (currentReferenceAssetId === assetId || currentOriginalReferenceAssetId === assetId) &&
+      traceSettings
+        ? traceSettings
+        : DEFAULT_TRACING_SETTINGS;
+    applyTracingSettings(settings);
+    tracingStatus.textContent = "Updating preview…";
+  } catch (error) {
+    tracingStatus.textContent = "This image could not be decoded. Try a different image file.";
+    console.error("Could not load the image for tracing.", error);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function makeCurrentReferenceTraceable(): void {
+  if (!currentReferenceBlob) return;
+  const originalId = currentOriginalReferenceAssetId ?? currentReferenceAssetId;
+  if (originalId) {
+    void assetManager.getImage(originalId).then((asset) => {
+      if (!asset) throw new Error("The original reference image is unavailable.");
+      return openTracingGenerator(asset.blob, asset.id, asset.source, asset.name);
+    }).catch((error: unknown) => {
+      announce("Couldn't open the original reference image.");
+      console.error("Could not open the original reference image for tracing.", error);
+    });
+    return;
+  }
+  void openTracingGenerator(currentReferenceBlob, null, "upload", "Tracing image");
+}
+
+async function ensureTracingGuideSaved(): Promise<{
+  originalId: string;
+  processedId: string;
+}> {
+  if (!selectedTracingBlob || !latestProcessedTracingImage || !latestTracingSettings) {
+    throw new Error("Wait for the tracing preview to finish before saving.");
+  }
+
+  let originalId = selectedTracingAssetId;
+  if (!originalId) {
+    const original = selectedTracingFromCurrentReference && currentReferenceAssetPromise
+      ? await currentReferenceAssetPromise
+      : await assetManager.saveImage(
+          selectedTracingBlob,
+          selectedTracingName,
+          selectedTracingSource,
+        );
+    originalId = original.id;
+    selectedTracingAssetId = original.id;
+    if (selectedTracingFromCurrentReference) {
+      currentOriginalReferenceAssetId = original.id;
+      if (!currentReferenceAssetId) currentReferenceAssetId = original.id;
+      updateCurrentHistorySnapshot();
+    }
+  } else {
+    const original = await assetManager.getImage(originalId);
+    if (!original) throw new Error("The original image is no longer in My Images.");
+  }
+
+  let processedId = savedTracingGuideId;
+  if (!processedId) {
+    const processedBlob = await canvasToBlob(tracingOutputPreview);
+    const baseName = selectedTracingName.replace(/\.[^.]+$/, "");
+    const processed = await assetManager.saveImage(
+      processedBlob,
+      `${baseName} - tracing guide`,
+      "processed",
+    );
+    processedId = processed.id;
+    savedTracingGuideId = processed.id;
+  }
+  return { originalId, processedId };
+}
+
+async function saveTracingGuide(startTracing: boolean): Promise<void> {
+  if (isTracingSaving || isProjectLoading || isHistoryRestoring) return;
+  isTracingSaving = true;
+  updateHistoryButtons();
+  tracingStatus.textContent = startTracing ? "Preparing your tracing workspace…" : "Saving image assets…";
+  try {
+    const { originalId, processedId } = await ensureTracingGuideSaved();
+    await refreshAssetLibrary();
+    if (startTracing) {
+      const guide = await assetManager.getImage(processedId);
+      if (!guide) throw new Error("The generated tracing guide could not be loaded.");
+      setReferenceImage(guide.blob, guide.id, originalId, latestTracingSettings);
+      traceOpacityInput.value = "100";
+      traceOpacityValue.value = "100%";
+      traceImage.style.opacity = "1";
+      currentReferenceVisible = true;
+      referenceVisibleInput.checked = true;
+      closeTracingGenerator();
+      prepareTraceWorkspace();
+      tracingStatus.textContent = "";
+      announce("Your tracing guide is ready on a separate artwork layer.");
+    } else {
+      tracingStatus.textContent = "Original and tracing guide saved to My Images.";
+      announce("Original image and tracing guide saved to My Images.");
+    }
+  } catch (error) {
+    tracingStatus.textContent = "Couldn't save the tracing guide. Your original image is unchanged.";
+    announce("Couldn't save the tracing guide.");
+    console.error("Could not save the tracing guide.", error);
+  } finally {
+    isTracingSaving = false;
+    updateHistoryButtons();
+  }
 }
 
 async function saveArtworkToLibrary(): Promise<void> {
@@ -1160,9 +1651,15 @@ async function loadSavedDrawing(): Promise<void> {
       backgroundInput.value = savedProject.background;
       canvasPaper.style.backgroundColor = savedProject.background;
       context = layerManager.activeLayer.context;
+      tracingGridVisible = savedProject.tracingGridVisible ?? false;
+      tracingGridSize = savedProject.tracingGridSize ?? 50;
+      traceSettings = savedProject.traceSettings ?? null;
       await restoreProjectReference(
         savedProject.referenceAssetId ?? null,
         savedProject.referenceOpacity ?? 0.28,
+        savedProject.referenceVisible ?? true,
+        savedProject.originalReferenceAssetId ?? null,
+        savedProject.traceSettings ?? null,
       );
       renderLayers();
       refreshLayerPanel();
@@ -1226,6 +1723,24 @@ for (const button of toolButtons) {
     if (isTool(tool)) setActiveTool(tool);
   });
 }
+
+eraserQuickButton.addEventListener("click", () => setActiveTool("eraser"));
+hardEraserButton.addEventListener("click", () => {
+  isSoftEraser = false;
+  hardEraserButton.classList.add("is-selected");
+  softEraserButton.classList.remove("is-selected");
+  hardEraserButton.setAttribute("aria-pressed", "true");
+  softEraserButton.setAttribute("aria-pressed", "false");
+  eraserCursor.classList.remove("is-soft");
+});
+softEraserButton.addEventListener("click", () => {
+  isSoftEraser = true;
+  softEraserButton.classList.add("is-selected");
+  hardEraserButton.classList.remove("is-selected");
+  softEraserButton.setAttribute("aria-pressed", "true");
+  hardEraserButton.setAttribute("aria-pressed", "false");
+  eraserCursor.classList.add("is-soft");
+});
 
 function interruptDrawing(): void {
   if (gestureSnapshot) {
@@ -1334,6 +1849,9 @@ canvas.addEventListener("pointerdown", (event: PointerEvent) => {
 });
 
 canvas.addEventListener("pointermove", (event: PointerEvent) => {
+  lastEraserCanvasPoint = getCanvasPoint(event);
+  updateEraserCursor(lastEraserCanvasPoint);
+
   if (event.pointerType === "touch" && touchPoints.has(event.pointerId)) {
     touchPoints.set(event.pointerId, getViewportPoint(event));
     if (isTouchNavigationActive) {
@@ -1377,6 +1895,11 @@ canvas.addEventListener("pointermove", (event: PointerEvent) => {
     drawActiveStrokeSegment(previousBrushPoint, point);
     previousBrushPoint = point;
   }
+});
+
+canvas.addEventListener("pointerleave", () => {
+  eraserCursor.hidden = true;
+  lastEraserCanvasPoint = null;
 });
 
 canvas.addEventListener("pointerup", (event: PointerEvent) => {
@@ -1652,18 +2175,6 @@ saveButton.addEventListener("click", () => {
 exportWithReferenceButton.addEventListener("click", () => downloadDrawing(true));
 saveArtworkButton.addEventListener("click", () => void saveArtworkToLibrary());
 
-minimizeButton.addEventListener("click", () => {
-  appShell.classList.add("is-minimized");
-  minimizedWindow.hidden = false;
-  restoreButton.focus();
-});
-
-restoreButton.addEventListener("click", () => {
-  appShell.classList.remove("is-minimized");
-  minimizedWindow.hidden = true;
-  minimizeButton.focus();
-});
-
 colorInput.addEventListener("input", () => {
   updateSelectedColor(colorInput.value);
 });
@@ -1686,6 +2197,7 @@ fillToleranceInput.addEventListener("input", () => {
 
 sizeInput.addEventListener("input", () => {
   sizeValue.value = `${sizeInput.value} px`;
+  if (lastEraserCanvasPoint) updateEraserCursor(lastEraserCanvasPoint);
 });
 
 backgroundInput.addEventListener("input", () => {
@@ -1702,6 +2214,28 @@ traceOpacityInput.addEventListener("input", () => {
 
 traceOpacityInput.addEventListener("change", rememberCanvas);
 
+makeTraceableButton.addEventListener("click", makeCurrentReferenceTraceable);
+
+referenceVisibleInput.addEventListener("change", () => {
+  if (traceImage.hidden) return;
+  currentReferenceVisible = referenceVisibleInput.checked;
+  updateReferenceVisibility();
+  rememberCanvas();
+});
+
+tracingGridInput.addEventListener("change", () => {
+  tracingGridVisible = tracingGridInput.checked;
+  updateReferenceVisibility();
+  rememberCanvas();
+});
+
+tracingGridSizeInput.addEventListener("input", () => {
+  tracingGridSize = Number(tracingGridSizeInput.value);
+  updateReferenceVisibility();
+});
+
+tracingGridSizeInput.addEventListener("change", rememberCanvas);
+
 traceInput.addEventListener("change", () => {
   if (isProjectLoading || isHistoryRestoring) return;
   const file = traceInput.files?.[0];
@@ -1713,14 +2247,16 @@ traceInput.addEventListener("change", () => {
     return;
   }
 
-  const objectUrl = setReferenceImage(file, null);
+  const objectUrl = setReferenceImage(file, null, null, null);
   prepareTraceWorkspace();
   announce("Tracing guide added. A new drawing layer is ready above it.");
-  void assetManager
-    .saveImage(file, file.name, "upload")
+  currentReferenceAssetPromise = assetManager
+    .saveImage(file, file.name, "upload");
+  void currentReferenceAssetPromise
     .then((asset) => {
       if (traceObjectUrl === objectUrl) {
         currentReferenceAssetId = asset.id;
+        currentOriginalReferenceAssetId = asset.id;
         updateCurrentHistorySnapshot();
       }
       return refreshAssetLibrary();
@@ -1734,6 +2270,56 @@ traceInput.addEventListener("change", () => {
       console.error("Could not save the uploaded tracing image.", error);
     });
 });
+
+function cancelTracingPreview(): void {
+  window.clearTimeout(tracingDebounceTimer);
+  tracingPreviewGeneration += 1;
+  tracingSourceGeneration += 1;
+  isTracingProcessing = false;
+  updateHistoryButtons();
+}
+
+function closeTracingGenerator(): void {
+  tracingWorkbench.hidden = true;
+  cancelTracingPreview();
+}
+
+closeTracingDialogButton.addEventListener("click", closeTracingGenerator);
+
+tracingDifficultyInput.addEventListener("change", () => {
+  const difficulty = tracingDifficultyInput.value;
+  if (
+    difficulty === "beginner" ||
+    difficulty === "intermediate" ||
+    difficulty === "advanced"
+  ) {
+    applyTracingSettings(TRACING_PRESETS[difficulty]);
+  }
+});
+
+for (const { input } of tracingControlMap) {
+  input.addEventListener("input", () => {
+    updateTracingControlOutputs();
+    scheduleTracingPreview();
+  });
+}
+
+tracingGrayscaleInput.addEventListener("change", scheduleTracingPreview);
+tracingInvertInput.addEventListener("change", scheduleTracingPreview);
+
+resetTracingSettingsButton.addEventListener("click", () => {
+  const difficulty = tracingDifficultyInput.value;
+  if (
+    difficulty === "beginner" ||
+    difficulty === "intermediate" ||
+    difficulty === "advanced"
+  ) {
+    applyTracingSettings(TRACING_PRESETS[difficulty]);
+  }
+});
+
+saveTracingGuideButton.addEventListener("click", () => void saveTracingGuide(false));
+startTracingButton.addEventListener("click", () => void saveTracingGuide(true));
 
 traceImage.addEventListener("load", () => {
   updateNavigator();
@@ -1757,6 +2343,21 @@ document.addEventListener("keydown", (event: KeyboardEvent) => {
   if (event.key === "Escape" && !toolPickerPanel.hidden) {
     closeToolPicker();
     toolPickerButton.focus();
+    return;
+  }
+
+  const isEditingText =
+    event.target instanceof HTMLElement &&
+    event.target.closest("input, select, textarea, [contenteditable='true']");
+  if (
+    event.key.toLowerCase() === "e" &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !isEditingText
+  ) {
+    event.preventDefault();
+    setActiveTool(activeTool === "eraser" ? toolBeforeEraser : "eraser");
     return;
   }
 
@@ -1816,9 +2417,12 @@ updateSelectedColor(colorInput.value);
 opacityValue.value = `${brushOpacityInput.value}%`;
 fillToleranceValue.value = fillToleranceInput.value;
 traceOpacityValue.value = `${traceOpacityInput.value}%`;
+tracingGridSizeValue.value = `${tracingGridSizeInput.value} px`;
+updateTracingControlOutputs();
 layoutCanvasPaper();
 viewport.fitToScreen(getViewportSize(), getArtworkSize());
 applyViewport();
+updateReferenceVisibility();
 updateHistoryButtons();
 void loadSavedDrawing()
   .catch((error: unknown) => {

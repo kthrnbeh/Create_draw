@@ -15,7 +15,8 @@ export function isImageAssetSource(value) {
         value === "artwork" ||
         value === "generated" ||
         value === "coloring-page" ||
-        value === "sticker");
+        value === "sticker" ||
+        value === "processed");
 }
 export function isImageAssetMetadata(value) {
     if (!value || typeof value !== "object")
@@ -81,9 +82,6 @@ export class AssetManager {
         await this.transact("readwrite", (store) => store.delete(id));
     }
     openDatabase() {
-        if (!this.indexedDb) {
-            return Promise.reject(new Error("IndexedDB is unavailable in this browser."));
-        }
         if (this.databasePromise)
             return this.databasePromise;
         const indexedDb = this.indexedDb;
