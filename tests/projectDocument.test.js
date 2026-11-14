@@ -26,9 +26,17 @@ test("creates and validates a versioned raster-layer project", () => {
   );
 
   assert.equal(project.schemaVersion, 1);
+  assert.equal(project.referenceAssetId, null);
+  assert.equal(project.referenceOpacity, 0.28);
   assert.equal(isProjectDocument(project), true);
   assert.equal(isProjectDocument({ ...project, schemaVersion: 999 }), false);
   assert.equal(isProjectDocument({ ...project, activeLayerId: "missing" }), false);
+  const previousProjectFormat = { ...project };
+  delete previousProjectFormat.referenceAssetId;
+  delete previousProjectFormat.referenceOpacity;
+  assert.equal(isProjectDocument(previousProjectFormat), true);
+  assert.equal(isProjectDocument({ ...project, referenceAssetId: "" }), false);
+  assert.equal(isProjectDocument({ ...project, referenceOpacity: 1.5 }), false);
 });
 
 test("recognizes the legacy single-canvas save without mutating it", () => {

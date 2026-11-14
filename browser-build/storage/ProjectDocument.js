@@ -1,6 +1,6 @@
 import { isSerializedLayerState, } from "../layers/LayerManager.js";
 export const PROJECT_SCHEMA_VERSION = 1;
-export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString()) {
+export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString(), referenceAssetId = null, referenceOpacity = 0.28) {
     return {
         ...layerState,
         schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -10,6 +10,8 @@ export function createProjectDocument(projectId, projectName, width, height, bac
         height,
         background,
         updatedAt,
+        referenceAssetId,
+        referenceOpacity,
     };
 }
 export function isProjectDocument(value) {
@@ -28,6 +30,14 @@ export function isProjectDocument(value) {
         typeof project.background === "string" &&
         /^#[\da-f]{6}$/i.test(project.background) &&
         typeof project.updatedAt === "string" &&
+        (project.referenceAssetId === undefined ||
+            project.referenceAssetId === null ||
+            (typeof project.referenceAssetId === "string" && project.referenceAssetId.length > 0)) &&
+        (project.referenceOpacity === undefined ||
+            (typeof project.referenceOpacity === "number" &&
+                Number.isFinite(project.referenceOpacity) &&
+                project.referenceOpacity >= 0 &&
+                project.referenceOpacity <= 1)) &&
         isSerializedLayerState(project));
 }
 export function isLegacySavedDrawing(value) {

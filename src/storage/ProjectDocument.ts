@@ -13,6 +13,8 @@ export interface ProjectDocument extends SerializedLayerState {
   height: number;
   background: string;
   updatedAt: string;
+  referenceAssetId?: string | null;
+  referenceOpacity?: number;
 }
 
 export interface LegacySavedDrawing {
@@ -28,6 +30,8 @@ export function createProjectDocument(
   background: string,
   layerState: SerializedLayerState,
   updatedAt = new Date().toISOString(),
+  referenceAssetId: string | null = null,
+  referenceOpacity = 0.28,
 ): ProjectDocument {
   return {
     ...layerState,
@@ -38,6 +42,8 @@ export function createProjectDocument(
     height,
     background,
     updatedAt,
+    referenceAssetId,
+    referenceOpacity,
   };
 }
 
@@ -57,6 +63,14 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
     typeof project.background === "string" &&
     /^#[\da-f]{6}$/i.test(project.background) &&
     typeof project.updatedAt === "string" &&
+    (project.referenceAssetId === undefined ||
+      project.referenceAssetId === null ||
+      (typeof project.referenceAssetId === "string" && project.referenceAssetId.length > 0)) &&
+    (project.referenceOpacity === undefined ||
+      (typeof project.referenceOpacity === "number" &&
+        Number.isFinite(project.referenceOpacity) &&
+        project.referenceOpacity >= 0 &&
+        project.referenceOpacity <= 1)) &&
     isSerializedLayerState(project)
   );
 }

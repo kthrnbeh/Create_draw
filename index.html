@@ -33,6 +33,15 @@
             <span aria-hidden="true">↓</span> Save PNG
           </button>
           <button
+            class="button button-quiet export-reference-button"
+            id="exportWithReferenceButton"
+            type="button"
+            title="Export artwork with the tracing reference"
+            aria-label="Export artwork with the tracing reference"
+          >
+            Export with Reference
+          </button>
+          <button
             class="button button-quiet minimize-button"
             id="minimizeButton"
             type="button"
@@ -189,6 +198,23 @@
             <input id="traceInput" class="visually-hidden" type="file" accept="image/*" />
             <button class="text-button" id="removeTraceButton" type="button" hidden>Remove tracing image</button>
             <button class="text-button" id="centerImageButton" type="button" hidden>Center image</button>
+            <div class="trace-opacity-control" id="traceOpacityControl" hidden>
+              <label class="control-label range-label" for="traceOpacity">
+                <span>Reference opacity</span><output id="traceOpacityValue" for="traceOpacity">28%</output>
+              </label>
+              <input id="traceOpacity" class="range-input" type="range" min="0" max="100" value="28" />
+            </div>
+          </section>
+
+          <section class="control-group asset-group" aria-labelledby="assetsHeading">
+            <div class="layers-heading">
+              <h2 id="assetsHeading" class="section-label">My Images</h2>
+            </div>
+            <button class="layer-action-button asset-save-button" id="saveArtworkButton" type="button">
+              Save Artwork to My Images
+            </button>
+            <ul class="asset-list" id="assetLibrary" aria-label="Saved images"></ul>
+            <p class="asset-library-message" id="assetLibraryMessage" role="status" aria-live="polite"></p>
           </section>
 
           <section class="control-group layers-group" aria-labelledby="layersHeading">

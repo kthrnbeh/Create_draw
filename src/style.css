@@ -605,6 +605,62 @@ a:focus-visible {
   text-decoration: underline;
 }
 
+.asset-save-button {
+  width: 100%;
+}
+
+.asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 220px;
+  margin: 10px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.asset-row {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #eeece6;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.asset-details {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 5px;
+  color: #777572;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-trace-button {
+  width: 100%;
+}
+
+.asset-library-message {
+  margin: 8px 0 0;
+  color: #a19d97;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.asset-library-message:empty {
+  display: none;
+}
+
+.trace-opacity-control {
+  margin-top: 12px;
+}
+
+.trace-opacity-control[hidden] {
+  display: none;
+}
+
 .layers-heading {
   display: flex;
   align-items: center;
@@ -1009,6 +1065,18 @@ footer {
     min-height: 35px;
     padding: 0 10px;
     font-size: 10px;
+  }
+
+  .export-reference-button {
+    width: 34px;
+    padding: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  .export-reference-button::after {
+    content: "↗";
+    font-size: 14px;
   }
 
   .workspace {

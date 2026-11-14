@@ -1,4 +1,5 @@
 import { floodFillPixels } from "./floodFill.js";
+import { AssetManager, type ImageAssetSource } from "./core/AssetManager.js";
 import { MAX_ZOOM, MIN_ZOOM, Viewport } from "./core/Viewport.js";
 import { LayerManager } from "./layers/LayerManager.js";
 import {
@@ -46,6 +47,7 @@ function getCanvasContext(element: HTMLCanvasElement): CanvasRenderingContext2D 
 }
 const displayContext = getCanvasContext(canvas);
 const layerManager = new LayerManager(canvas.width, canvas.height);
+const assetManager = new AssetManager();
 let context = layerManager.activeLayer.context;
 const colorSampleCanvas = document.createElement("canvas");
 colorSampleCanvas.width = canvas.width;
@@ -78,6 +80,13 @@ const traceInput = getRequiredElement<HTMLInputElement>("#traceInput");
 const traceImage = getRequiredElement<HTMLImageElement>("#traceImage");
 const removeTraceButton = getRequiredElement<HTMLButtonElement>("#removeTraceButton");
 const centerImageButton = getRequiredElement<HTMLButtonElement>("#centerImageButton");
+const traceOpacityControl = getRequiredElement<HTMLDivElement>("#traceOpacityControl");
+const traceOpacityInput = getRequiredElement<HTMLInputElement>("#traceOpacity");
+const traceOpacityValue = getRequiredElement<HTMLOutputElement>("#traceOpacityValue");
+const assetLibrary = getRequiredElement<HTMLUListElement>("#assetLibrary");
+const assetLibraryMessage = getRequiredElement<HTMLElement>("#assetLibraryMessage");
+const saveArtworkButton = getRequiredElement<HTMLButtonElement>("#saveArtworkButton");
+const exportWithReferenceButton = getRequiredElement<HTMLButtonElement>("#exportWithReferenceButton");
 const undoButton = getRequiredElement<HTMLButtonElement>("#undoButton");
 const redoButton = getRequiredElement<HTMLButtonElement>("#redoButton");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clearButton");
@@ -136,6 +145,7 @@ let isPanning = false;
 let isFilling = false;
 let isHistoryRestoring = false;
 let isProjectLoading = true;
+let isAssetSaving = false;
 let isSpaceHandActive = false;
 let startPoint = { x: 0, y: 0 };
 let previousBrushPoint: { x: number; y: number } | null = null;
@@ -150,6 +160,7 @@ const viewport = new Viewport();
 let drawingSnapshot: ImageData | null = null;
 let gestureSnapshot: ImageData | null = null;
 let traceObjectUrl: string | null = null;
+let currentReferenceAssetId: string | null = null;
 let saveTimer: number | undefined;
 let history: string[] = [];
 let historyIndex = -1;
@@ -173,6 +184,13 @@ function updateHistoryButtons(): void {
   redoButton.disabled = isBusy || historyIndex >= history.length - 1;
   clearButton.disabled = isBusy;
   saveButton.disabled = isBusy;
+  saveArtworkButton.disabled = isBusy || isAssetSaving;
+  traceOpacityInput.disabled = isBusy || traceImage.hidden;
+  traceInput.disabled = isBusy;
+  removeTraceButton.disabled = isBusy;
+  centerImageButton.disabled = isBusy;
+  exportWithReferenceButton.disabled =
+    isBusy || traceImage.hidden || !traceImage.complete || traceImage.naturalWidth === 0;
   backgroundInput.disabled = isBusy;
   updateLayerActionAvailability();
 }
@@ -188,6 +206,8 @@ function createCurrentProject(
     backgroundInput.value,
     layerManager.serialize(),
     updatedAt,
+    currentReferenceAssetId,
+    Number(traceOpacityInput.value) / 100,
   );
 }
 
@@ -218,6 +238,31 @@ function rememberCanvas(): void {
   scheduleSave();
 }
 
+function updateCurrentHistorySnapshot(): void {
+  const previous = history[historyIndex];
+  if (!previous) {
+    rememberCanvas();
+    return;
+  }
+
+  const snapshot = JSON.stringify(createCurrentProject(historySnapshotTime));
+  if (previous === snapshot) return;
+  history[historyIndex] = snapshot;
+  historyCharacters = history.reduce((total, entry) => total + entry.length, 0);
+
+  while (
+    history.length > 1 &&
+    (history.length > maxHistoryEntries || historyCharacters > maxHistoryCharacters)
+  ) {
+    const removed = history.shift();
+    if (removed) historyCharacters -= removed.length;
+    historyIndex = Math.max(0, historyIndex - 1);
+  }
+
+  updateHistoryButtons();
+  scheduleSave();
+}
+
 async function restoreCanvas(index: number): Promise<void> {
   if (
     isFilling ||
@@ -242,6 +287,10 @@ async function restoreCanvas(index: number): Promise<void> {
     context = layerManager.activeLayer.context;
     backgroundInput.value = project.background;
     canvasPaper.style.backgroundColor = project.background;
+    await restoreProjectReference(
+      project.referenceAssetId ?? null,
+      project.referenceOpacity ?? 0.28,
+    );
     refreshLayerPanel();
     renderLayers();
     historyIndex = index;
@@ -346,7 +395,7 @@ function updateNavigator(): void {
   navigatorContext.fillRect(0, 0, mapWidth, mapHeight);
 
   if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
-    navigatorContext.globalAlpha = 0.28;
+    navigatorContext.globalAlpha = Number(traceOpacityInput.value) / 100;
     drawImageContained(navigatorContext, traceImage, mapWidth, mapHeight);
     navigatorContext.globalAlpha = 1;
   }
@@ -538,6 +587,76 @@ function drawImageContained(
   );
 }
 
+function setReferenceImage(blob: Blob, assetId: string | null): string {
+  const nextObjectUrl = URL.createObjectURL(blob);
+  if (traceObjectUrl) URL.revokeObjectURL(traceObjectUrl);
+  traceObjectUrl = nextObjectUrl;
+  currentReferenceAssetId = assetId;
+  traceImage.src = nextObjectUrl;
+  traceImage.style.objectPosition = "center center";
+  traceImage.style.transform = "none";
+  traceImage.style.opacity = String(Number(traceOpacityInput.value) / 100);
+  traceImage.hidden = false;
+  removeTraceButton.hidden = false;
+  centerImageButton.hidden = false;
+  traceOpacityControl.hidden = false;
+  updateNavigator();
+  updateHistoryButtons();
+  return nextObjectUrl;
+}
+
+function clearReferenceImage(preserveAssetId = false): void {
+  traceImage.hidden = true;
+  traceImage.removeAttribute("src");
+  removeTraceButton.hidden = true;
+  centerImageButton.hidden = true;
+  traceOpacityControl.hidden = true;
+  if (traceObjectUrl) {
+    URL.revokeObjectURL(traceObjectUrl);
+    traceObjectUrl = null;
+  }
+  if (!preserveAssetId) currentReferenceAssetId = null;
+  updateNavigator();
+  updateHistoryButtons();
+}
+
+async function restoreProjectReference(
+  assetId: string | null,
+  opacity: number,
+): Promise<void> {
+  const opacityPercent = Math.round(Math.max(0, Math.min(1, opacity)) * 100);
+  traceOpacityInput.value = String(opacityPercent);
+  traceOpacityValue.value = `${opacityPercent}%`;
+  traceImage.style.opacity = String(opacityPercent / 100);
+
+  if (!assetId) {
+    clearReferenceImage();
+    return;
+  }
+
+  currentReferenceAssetId = assetId;
+  try {
+    const asset = await assetManager.getImage(assetId);
+    if (!asset) throw new Error(`The reference asset ${assetId} is missing.`);
+    setReferenceImage(asset.blob, asset.id);
+  } catch (error) {
+    clearReferenceImage(true);
+    announce("The drawing loaded, but its saved reference image is unavailable.");
+    console.error("Could not restore the tracing reference.", error);
+  }
+}
+
+function prepareTraceWorkspace(): void {
+  const traceLayer = layerManager.addLayer("Tracing");
+  context = traceLayer.context;
+  refreshLayerPanel();
+  renderLayers();
+  setActiveTool("brush");
+  viewport.fitToScreen(getViewportSize(), getArtworkSize());
+  applyViewport();
+  rememberCanvas();
+}
+
 function colorToRgba(color: string): [number, number, number, number] {
   return [
     Number.parseInt(color.slice(1, 3), 16),
@@ -562,7 +681,7 @@ function sampleVisibleColor(point: { x: number; y: number }): string {
   colorSampleContext.fillRect(0, 0, canvas.width, canvas.height);
 
   if (!traceImage.hidden && traceImage.complete && traceImage.naturalWidth > 0) {
-    colorSampleContext.globalAlpha = 0.28;
+    colorSampleContext.globalAlpha = Number(traceOpacityInput.value) / 100;
     drawImageContained(colorSampleContext, traceImage, canvas.width, canvas.height);
     colorSampleContext.globalAlpha = 1;
   }
@@ -685,6 +804,101 @@ function isTool(value: string | undefined): value is Tool {
 
 function updateSaveStatus(message: string): void {
   saveStatus.textContent = message;
+}
+
+const assetSourceLabels: Record<ImageAssetSource, string> = {
+  upload: "Uploaded",
+  artwork: "Artwork",
+  generated: "Generated",
+  "coloring-page": "Coloring page",
+  sticker: "Sticker",
+};
+let assetLibraryRefreshId = 0;
+
+async function refreshAssetLibrary(): Promise<void> {
+  const refreshId = ++assetLibraryRefreshId;
+  assetLibrary.replaceChildren();
+  assetLibraryMessage.textContent = "Loading saved images…";
+
+  try {
+    const assets = await assetManager.listImages();
+    if (refreshId !== assetLibraryRefreshId) return;
+    assetLibraryMessage.textContent = assets.length
+      ? ""
+      : "Images you upload or save from your artwork will appear here.";
+
+    for (const asset of assets) {
+      const row = document.createElement("li");
+      row.className = "asset-row";
+      const details = document.createElement("span");
+      details.className = "asset-details";
+      details.textContent = `${asset.name} · ${assetSourceLabels[asset.source]}`;
+
+      const traceButton = document.createElement("button");
+      traceButton.className = "layer-action-button asset-trace-button";
+      traceButton.type = "button";
+      traceButton.textContent = "Trace This Image";
+      traceButton.setAttribute("aria-label", `Trace ${asset.name}`);
+      traceButton.disabled = isProjectLoading || isHistoryRestoring;
+      traceButton.addEventListener("click", () => {
+        void traceSavedImage(asset.id);
+      });
+
+      row.append(details, traceButton);
+      assetLibrary.append(row);
+    }
+  } catch (error) {
+    if (refreshId !== assetLibraryRefreshId) return;
+    assetLibraryMessage.textContent =
+      "The saved image library is unavailable. You can still draw and use an uploaded image until you close this page.";
+    console.error("Could not load the saved image library.", error);
+  }
+}
+
+async function traceSavedImage(assetId: string): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling) return;
+  try {
+    const asset = await assetManager.getImage(assetId);
+    if (!asset) throw new Error("The selected saved image no longer exists.");
+    setReferenceImage(asset.blob, asset.id);
+    prepareTraceWorkspace();
+    announce(`${asset.name} is ready to trace.`);
+  } catch (error) {
+    announce("Couldn't open that saved image.");
+    console.error("Could not use a saved image as a tracing reference.", error);
+  }
+}
+
+function canvasToBlob(source: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    source.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("The browser could not encode the canvas image."));
+        return;
+      }
+      resolve(blob);
+    }, "image/png");
+  });
+}
+
+async function saveArtworkToLibrary(): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling || isAssetSaving) return;
+  isAssetSaving = true;
+  updateHistoryButtons();
+
+  try {
+    const blob = await canvasToBlob(canvas);
+    await assetManager.saveImage(blob, "My artwork", "artwork");
+    await refreshAssetLibrary();
+    announce("Artwork saved to My Images.");
+  } catch (error) {
+    assetLibraryMessage.textContent = "Couldn't save the artwork to your image library.";
+    announce("Couldn't save artwork to My Images.");
+    console.error("Could not save artwork as an image asset.", error);
+  } finally {
+    isAssetSaving = false;
+    updateHistoryButtons();
+  }
 }
 
 function updateLayerActionAvailability(): void {
@@ -946,6 +1160,10 @@ async function loadSavedDrawing(): Promise<void> {
       backgroundInput.value = savedProject.background;
       canvasPaper.style.backgroundColor = savedProject.background;
       context = layerManager.activeLayer.context;
+      await restoreProjectReference(
+        savedProject.referenceAssetId ?? null,
+        savedProject.referenceOpacity ?? 0.28,
+      );
       renderLayers();
       refreshLayerPanel();
       initializeHistory();
@@ -1286,6 +1504,8 @@ canvasViewport.addEventListener(
 centerImageButton.addEventListener("click", () => {
   traceImage.style.objectPosition = "center center";
   traceImage.style.transform = "none";
+  viewport.fitToScreen(getViewportSize(), getArtworkSize());
+  applyViewport();
   announce("Tracing image centered on the canvas.");
 });
 
@@ -1369,6 +1589,50 @@ redoButton.addEventListener("click", () => {
   if (historyIndex < history.length - 1) void restoreCanvas(historyIndex + 1);
 });
 
+function downloadDrawing(includeReference: boolean): void {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  if (includeReference && (traceImage.hidden || !traceImage.complete)) {
+    announce("Add a tracing reference before exporting with it.");
+    return;
+  }
+
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = canvas.width;
+  exportCanvas.height = canvas.height;
+  const exportContext = exportCanvas.getContext("2d");
+  if (!exportContext) {
+    announce("Couldn't prepare the image for download.");
+    return;
+  }
+
+  try {
+    exportContext.fillStyle = backgroundInput.value;
+    exportContext.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    if (includeReference && traceImage.naturalWidth > 0) {
+      exportContext.globalAlpha = Number(traceOpacityInput.value) / 100;
+      drawImageContained(exportContext, traceImage, exportCanvas.width, exportCanvas.height);
+      exportContext.globalAlpha = 1;
+    }
+
+    exportContext.drawImage(canvas, 0, 0);
+    const downloadLink = document.createElement("a");
+    downloadLink.download = includeReference
+      ? "my-drawing-with-reference.png"
+      : "my-drawing.png";
+    downloadLink.href = exportCanvas.toDataURL("image/png");
+    downloadLink.click();
+    announce(
+      includeReference
+        ? "Your drawing and tracing reference downloaded as a PNG."
+        : "Your artwork downloaded without the tracing reference.",
+    );
+  } catch (error) {
+    announce("Couldn't export the image. Try removing the reference and exporting the artwork only.");
+    console.error("Could not export the drawing as a PNG.", error);
+  }
+}
+
 clearButton.addEventListener("click", () => {
   if (isFilling || isHistoryRestoring || isProjectLoading) return;
   if (!layerManager.canEditActiveLayer) {
@@ -1382,33 +1646,11 @@ clearButton.addEventListener("click", () => {
 });
 
 saveButton.addEventListener("click", () => {
-  if (isFilling || isHistoryRestoring || isProjectLoading) return;
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = canvas.width;
-  exportCanvas.height = canvas.height;
-  const exportContext = exportCanvas.getContext("2d");
-
-  if (!exportContext) {
-    announce("Couldn't prepare the image for download.");
-    return;
-  }
-
-  exportContext.fillStyle = backgroundInput.value;
-  exportContext.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-  if (!traceImage.hidden && traceImage.complete) {
-    exportContext.globalAlpha = 0.3;
-    drawImageContained(exportContext, traceImage, exportCanvas.width, exportCanvas.height);
-    exportContext.globalAlpha = 1;
-  }
-
-  exportContext.drawImage(canvas, 0, 0);
-  const downloadLink = document.createElement("a");
-  downloadLink.download = "my-drawing.png";
-  downloadLink.href = exportCanvas.toDataURL("image/png");
-  downloadLink.click();
-  announce("Your drawing downloaded as a PNG.");
+  downloadDrawing(false);
 });
+
+exportWithReferenceButton.addEventListener("click", () => downloadDrawing(true));
+saveArtworkButton.addEventListener("click", () => void saveArtworkToLibrary());
 
 minimizeButton.addEventListener("click", () => {
   appShell.classList.add("is-minimized");
@@ -1452,7 +1694,16 @@ backgroundInput.addEventListener("input", () => {
   scheduleSave();
 });
 
+traceOpacityInput.addEventListener("input", () => {
+  traceOpacityValue.value = `${traceOpacityInput.value}%`;
+  traceImage.style.opacity = String(Number(traceOpacityInput.value) / 100);
+  updateNavigator();
+});
+
+traceOpacityInput.addEventListener("change", rememberCanvas);
+
 traceInput.addEventListener("change", () => {
+  if (isProjectLoading || isHistoryRestoring) return;
   const file = traceInput.files?.[0];
   if (!file) return;
 
@@ -1462,30 +1713,44 @@ traceInput.addEventListener("change", () => {
     return;
   }
 
-  if (traceObjectUrl) URL.revokeObjectURL(traceObjectUrl);
-  traceObjectUrl = URL.createObjectURL(file);
-  traceImage.src = traceObjectUrl;
-  traceImage.hidden = false;
-  removeTraceButton.hidden = false;
-  centerImageButton.hidden = false;
-  announce("Tracing guide added. It won't cover your drawing.");
-  updateNavigator();
+  const objectUrl = setReferenceImage(file, null);
+  prepareTraceWorkspace();
+  announce("Tracing guide added. A new drawing layer is ready above it.");
+  void assetManager
+    .saveImage(file, file.name, "upload")
+    .then((asset) => {
+      if (traceObjectUrl === objectUrl) {
+        currentReferenceAssetId = asset.id;
+        updateCurrentHistorySnapshot();
+      }
+      return refreshAssetLibrary();
+    })
+    .catch((error: unknown) => {
+      if (traceObjectUrl === objectUrl) {
+        assetLibraryMessage.textContent =
+          "This image is ready to trace, but couldn't be saved to My Images for reuse.";
+        announce("Image ready to trace, but it couldn't be saved to My Images.");
+      }
+      console.error("Could not save the uploaded tracing image.", error);
+    });
 });
 
-traceImage.addEventListener("load", updateNavigator);
+traceImage.addEventListener("load", () => {
+  updateNavigator();
+  updateHistoryButtons();
+});
+
+traceImage.addEventListener("error", () => {
+  updateHistoryButtons();
+  announce("Couldn't display that image as a tracing reference.");
+  console.error("The selected tracing image could not be decoded.");
+});
 
 removeTraceButton.addEventListener("click", () => {
-  traceImage.hidden = true;
-  traceImage.removeAttribute("src");
-  removeTraceButton.hidden = true;
-  centerImageButton.hidden = true;
+  if (isProjectLoading || isHistoryRestoring) return;
+  clearReferenceImage();
   traceInput.value = "";
-
-  if (traceObjectUrl) {
-    URL.revokeObjectURL(traceObjectUrl);
-    traceObjectUrl = null;
-  }
-  updateNavigator();
+  rememberCanvas();
 });
 
 document.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -1550,6 +1815,7 @@ window.addEventListener("resize", layoutCanvasPaper);
 updateSelectedColor(colorInput.value);
 opacityValue.value = `${brushOpacityInput.value}%`;
 fillToleranceValue.value = fillToleranceInput.value;
+traceOpacityValue.value = `${traceOpacityInput.value}%`;
 layoutCanvasPaper();
 viewport.fitToScreen(getViewportSize(), getArtworkSize());
 applyViewport();
@@ -1564,4 +1830,5 @@ void loadSavedDrawing()
     isProjectLoading = false;
     refreshLayerPanel();
     updateHistoryButtons();
+    void refreshAssetLibrary();
   });
