@@ -22,6 +22,8 @@ export interface SerializedLayerState {
   layers: SerializedRasterLayer[];
 }
 
+export type ClearLayerResult = "cleared" | "empty" | "locked" | "missing";
+
 type CanvasFactory = () => HTMLCanvasElement;
 
 let generatedId = 0;
@@ -151,6 +153,31 @@ export class LayerManager {
     return true;
   }
 
+  clearLayer(id: string): ClearLayerResult {
+    const layer = this.getLayer(id);
+    if (!layer) return "missing";
+    if (layer.locked) return "locked";
+    if (this.isLayerEmpty(layer)) return "empty";
+    layer.context.clearRect(0, 0, this.width, this.height);
+    return "cleared";
+  }
+
+  clearEditableLayers(): { clearedLayerIds: string[]; lockedLayerIds: string[] } {
+    const clearedLayerIds: string[] = [];
+    const lockedLayerIds: string[] = [];
+
+    for (const layer of this.items) {
+      if (layer.locked) {
+        lockedLayerIds.push(layer.id);
+      } else if (!this.isLayerEmpty(layer)) {
+        layer.context.clearRect(0, 0, this.width, this.height);
+        clearedLayerIds.push(layer.id);
+      }
+    }
+
+    return { clearedLayerIds, lockedLayerIds };
+  }
+
   mergeDown(id: string): boolean {
     const topIndex = this.items.findIndex((layer) => layer.id === id);
     const top = this.items[topIndex];
@@ -272,6 +299,14 @@ export class LayerManager {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("The drawing app could not create a raster layer.");
     return context;
+  }
+
+  private isLayerEmpty(layer: RasterLayer): boolean {
+    const pixels = layer.context.getImageData(0, 0, this.width, this.height).data;
+    for (let alpha = 3; alpha < pixels.length; alpha += 4) {
+      if (pixels[alpha] !== 0) return false;
+    }
+    return true;
   }
 
   private nextLayerName(): string {

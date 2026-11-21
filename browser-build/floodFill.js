@@ -1,4 +1,80 @@
 const pixelChunkSize = 20_000;
+/** Return the connected fill region without changing the source pixels. */
+export async function createFloodFillMask(pixels, width, height, startX, startY, tolerance, gapClosing = "off") {
+    if (width <= 0 || height <= 0 || pixels.length !== width * height * 4) {
+        throw new RangeError("Flood fill received invalid image dimensions.");
+    }
+    const x0 = Math.floor(startX);
+    const y0 = Math.floor(startY);
+    if (x0 < 0 || x0 >= width || y0 < 0 || y0 >= height) {
+        throw new RangeError("Flood fill received invalid start coordinates.");
+    }
+    const mask = new Uint8Array(width * height);
+    const targetIndex = (y0 * width + x0) * 4;
+    const target = [pixels[targetIndex], pixels[targetIndex + 1], pixels[targetIndex + 2], pixels[targetIndex + 3]];
+    const allowed = Math.max(0, Math.min(255, tolerance));
+    const bridge = gapClosing === "small" ? 1 : gapClosing === "medium" ? 2 : 0;
+    const pending = [[x0, y0]];
+    const bestGap = new Int16Array(width * height);
+    bestGap.fill(32767);
+    bestGap[y0 * width + x0] = 0;
+    let processed = 0;
+    const matches = (x, y) => {
+        const index = (y * width + x) * 4;
+        const alpha = pixels[index + 3];
+        if (target[3] === 0)
+            return alpha === 0;
+        return Math.abs(pixels[index] - target[0]) <= allowed &&
+            Math.abs(pixels[index + 1] - target[1]) <= allowed &&
+            Math.abs(pixels[index + 2] - target[2]) <= allowed &&
+            Math.abs(alpha - target[3]) <= allowed;
+    };
+    while (pending.length) {
+        const [x, y] = pending.pop();
+        const position = y * width + x;
+        const currentGap = bestGap[position];
+        if (mask[position] || currentGap > bridge)
+            continue;
+        if (matches(x, y))
+            mask[position] = 1;
+        processed += 1;
+        for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                continue;
+            const nextGap = matches(nx, ny) ? currentGap : currentGap + 1;
+            const nextPosition = ny * width + nx;
+            if (nextGap < bestGap[nextPosition] && nextGap <= bridge) {
+                bestGap[nextPosition] = nextGap;
+                pending.push([nx, ny]);
+            }
+        }
+        if (processed >= pixelChunkSize) {
+            await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+            processed = 0;
+        }
+    }
+    return mask;
+}
+export function paintMask(pixels, mask, width, colorAt, opacity = 1) {
+    let changed = false;
+    const alphaMultiplier = Math.max(0, Math.min(1, opacity));
+    for (let index = 0; index < mask.length; index += 1) {
+        if (!mask[index])
+            continue;
+        const x = index % width;
+        const y = Math.floor(index / width);
+        const color = colorAt(x, y);
+        const pixel = index * 4;
+        const nextAlpha = Math.round(color[3] * alphaMultiplier);
+        if (pixels[pixel] !== color[0] || pixels[pixel + 1] !== color[1] || pixels[pixel + 2] !== color[2] || pixels[pixel + 3] !== nextAlpha)
+            changed = true;
+        pixels[pixel] = color[0];
+        pixels[pixel + 1] = color[1];
+        pixels[pixel + 2] = color[2];
+        pixels[pixel + 3] = nextAlpha;
+    }
+    return changed;
+}
 export async function floodFillPixels(pixels, width, height, startX, startY, fillColor, tolerance) {
     if (width <= 0 ||
         height <= 0 ||

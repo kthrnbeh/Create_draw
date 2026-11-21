@@ -6,6 +6,7 @@ class FakeCanvas {
   width = 0;
   height = 0;
   draws = [];
+  hasPixels = false;
   context = new FakeContext(this);
 
   getContext() {
@@ -41,15 +42,23 @@ class FakeContext {
 
   clearRect() {
     this.canvas.draws = [];
+    this.canvas.hasPixels = false;
   }
 
   drawImage(source) {
     this.canvas.draws.push({ source, opacity: this.globalAlpha });
+    this.canvas.hasPixels = true;
+  }
+
+  getImageData(_x, _y, width, height) {
+    const data = new Uint8ClampedArray(width * height * 4);
+    if (this.canvas.hasPixels) data[3] = 255;
+    return { data };
   }
 }
 
 function createManager() {
-  return new LayerManager(1200, 800, () => new FakeCanvas());
+  return new LayerManager(4, 3, () => new FakeCanvas());
 }
 
 test("supports layer selection, duplication, ordering, properties, and deletion", () => {
@@ -133,6 +142,49 @@ test("serializes layer order, active selection, and editable metadata", () => {
       },
     ],
   });
+});
+
+test("clears only an unlocked layer that contains artwork", () => {
+  const manager = createManager();
+  const first = manager.activeLayer;
+  const second = manager.addLayer("Color");
+  first.canvas.hasPixels = true;
+  second.canvas.hasPixels = true;
+
+  assert.equal(manager.clearLayer(first.id), "cleared");
+  assert.equal(first.canvas.hasPixels, false);
+  assert.equal(second.canvas.hasPixels, true);
+  assert.equal(manager.clearLayer(first.id), "empty");
+
+  manager.setLayerLocked(second.id, true);
+  assert.equal(manager.clearLayer(second.id), "locked");
+  assert.equal(second.canvas.hasPixels, true);
+  assert.equal(manager.clearLayer("missing"), "missing");
+});
+
+test("clears artwork from all unlocked layers but preserves locked artwork", () => {
+  const manager = createManager();
+  const visible = manager.activeLayer;
+  const hidden = manager.addLayer("Hidden");
+  const locked = manager.addLayer("Protected");
+  visible.canvas.hasPixels = true;
+  hidden.canvas.hasPixels = true;
+  locked.canvas.hasPixels = true;
+  manager.setLayerVisible(hidden.id, false);
+  manager.setLayerLocked(locked.id, true);
+  manager.setLayerOpacity(visible.id, 0.5);
+
+  const result = manager.clearEditableLayers();
+
+  assert.deepEqual(result, {
+    clearedLayerIds: [visible.id, hidden.id],
+    lockedLayerIds: [locked.id],
+  });
+  assert.equal(visible.canvas.hasPixels, false);
+  assert.equal(hidden.canvas.hasPixels, false);
+  assert.equal(locked.canvas.hasPixels, true);
+  assert.equal(visible.opacity, 0.5);
+  assert.equal(hidden.visible, false);
 });
 
 test("merges down only when the visible result can be preserved and flattens explicitly", () => {

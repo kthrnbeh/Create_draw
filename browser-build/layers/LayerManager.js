@@ -114,6 +114,31 @@ export class LayerManager {
         layer.opacity = Math.max(0, Math.min(1, opacity));
         return true;
     }
+    clearLayer(id) {
+        const layer = this.getLayer(id);
+        if (!layer)
+            return "missing";
+        if (layer.locked)
+            return "locked";
+        if (this.isLayerEmpty(layer))
+            return "empty";
+        layer.context.clearRect(0, 0, this.width, this.height);
+        return "cleared";
+    }
+    clearEditableLayers() {
+        const clearedLayerIds = [];
+        const lockedLayerIds = [];
+        for (const layer of this.items) {
+            if (layer.locked) {
+                lockedLayerIds.push(layer.id);
+            }
+            else if (!this.isLayerEmpty(layer)) {
+                layer.context.clearRect(0, 0, this.width, this.height);
+                clearedLayerIds.push(layer.id);
+            }
+        }
+        return { clearedLayerIds, lockedLayerIds };
+    }
     mergeDown(id) {
         const topIndex = this.items.findIndex((layer) => layer.id === id);
         const top = this.items[topIndex];
@@ -221,6 +246,14 @@ export class LayerManager {
         if (!context)
             throw new Error("The drawing app could not create a raster layer.");
         return context;
+    }
+    isLayerEmpty(layer) {
+        const pixels = layer.context.getImageData(0, 0, this.width, this.height).data;
+        for (let alpha = 3; alpha < pixels.length; alpha += 4) {
+            if (pixels[alpha] !== 0)
+                return false;
+        }
+        return true;
     }
     nextLayerName() {
         let number = this.items.length + 1;

@@ -16,7 +16,8 @@ export function isImageAssetSource(value) {
         value === "generated" ||
         value === "coloring-page" ||
         value === "sticker" ||
-        value === "processed");
+        value === "processed" ||
+        value === "lesson");
 }
 export function isImageAssetMetadata(value) {
     if (!value || typeof value !== "object")

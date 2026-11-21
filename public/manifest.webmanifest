@@ -1,0 +1,11 @@
+{
+  "name": "Create Draw",
+  "short_name": "Create Draw",
+  "description": "A cozy drawing space for sketches, shapes, and ideas.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fffdf9",
+  "theme_color": "#fffdf9",
+  "icons": [{ "src": "./favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

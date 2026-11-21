@@ -6,6 +6,10 @@ import {
   isTracingSettings,
   type TracingSettings,
 } from "../tracing/OutlineGenerator.js";
+import {
+  isLessonProgress,
+  type LessonProgress,
+} from "../lessons/LessonProgress.js";
 
 export const PROJECT_SCHEMA_VERSION = 1;
 
@@ -24,6 +28,7 @@ export interface ProjectDocument extends SerializedLayerState {
   tracingGridVisible?: boolean;
   tracingGridSize?: number;
   traceSettings?: TracingSettings | null;
+  lessonProgress?: LessonProgress | null;
 }
 
 export interface LegacySavedDrawing {
@@ -46,6 +51,7 @@ export function createProjectDocument(
   tracingGridVisible = false,
   tracingGridSize = 50,
   traceSettings: TracingSettings | null = null,
+  lessonProgress: LessonProgress | null = null,
 ): ProjectDocument {
   return {
     ...layerState,
@@ -63,6 +69,7 @@ export function createProjectDocument(
     tracingGridVisible,
     tracingGridSize,
     traceSettings,
+    lessonProgress,
   };
 }
 
@@ -106,6 +113,9 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
     (project.traceSettings === undefined ||
       project.traceSettings === null ||
       isTracingSettings(project.traceSettings)) &&
+    (project.lessonProgress === undefined ||
+      project.lessonProgress === null ||
+      isLessonProgress(project.lessonProgress)) &&
     isSerializedLayerState(project)
   );
 }

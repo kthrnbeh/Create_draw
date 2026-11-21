@@ -43,6 +43,7 @@ test("creates and validates a versioned raster-layer project", () => {
   delete previousProjectFormat.tracingGridVisible;
   delete previousProjectFormat.tracingGridSize;
   delete previousProjectFormat.traceSettings;
+  delete previousProjectFormat.lessonProgress;
   assert.equal(isProjectDocument(previousProjectFormat), true);
   assert.equal(isProjectDocument({ ...project, referenceAssetId: "" }), false);
   assert.equal(isProjectDocument({ ...project, referenceOpacity: 1.5 }), false);

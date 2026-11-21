@@ -1,4 +1,4 @@
-import { floodFillPixels } from "./floodFill.js";
+import { createFloodFillMask, paintMask, type GapClosing } from "./floodFill.js";
 import {
   AssetManager,
   type ImageAssetMetadata,
@@ -16,6 +16,8 @@ import {
   drawBrushSegment,
   type BrushPreset,
 } from "./tools/BrushStrokes.js";
+import { eraseSegment } from "./tools/Eraser.js";
+import { drawExportContent } from "./export/CanvasExport.js";
 import {
   DEFAULT_TRACING_SETTINGS,
   TRACING_PRESETS,
@@ -24,6 +26,16 @@ import {
   type TracingSettings,
 } from "./tracing/OutlineGenerator.js";
 import { OutlineProcessor } from "./tracing/OutlineProcessor.js";
+import {
+  changeLessonStage,
+  type LessonProgress,
+  type LessonReference,
+} from "./lessons/LessonProgress.js";
+import {
+  genericConstructionGuide,
+  getStarterLesson,
+  STARTER_LESSONS,
+} from "./lessons/StarterLessons.js";
 
 type Tool =
   | "brush"
@@ -77,6 +89,19 @@ const eraserSettings = getRequiredElement<HTMLDivElement>("#eraserSettings");
 const hardEraserButton = getRequiredElement<HTMLButtonElement>("#hardEraserButton");
 const softEraserButton = getRequiredElement<HTMLButtonElement>("#softEraserButton");
 const bucketSettings = getRequiredElement<HTMLDivElement>("#bucketSettings");
+const paintBucketQuickButton = getRequiredElement<HTMLButtonElement>("#paintBucketQuickButton");
+const bucketFillStyle = getRequiredElement<HTMLSelectElement>("#bucketFillStyle");
+const bucketSecondaryColor = getRequiredElement<HTMLInputElement>("#bucketSecondaryColor");
+const bucketSecondaryColorControl = getRequiredElement<HTMLDivElement>("#bucketSecondaryColorControl");
+const bucketGradientMode = getRequiredElement<HTMLSelectElement>("#bucketGradientMode");
+const bucketGradientAngle = getRequiredElement<HTMLInputElement>("#bucketGradientAngle");
+const bucketGradientAngleValue = getRequiredElement<HTMLOutputElement>("#bucketGradientAngleValue");
+const bucketTexture = getRequiredElement<HTMLSelectElement>("#bucketTexture");
+const bucketGapClosing = getRequiredElement<HTMLSelectElement>("#bucketGapClosing");
+const bucketOpacity = getRequiredElement<HTMLInputElement>("#bucketOpacity");
+const bucketOpacityValue = getRequiredElement<HTMLOutputElement>("#bucketOpacityValue");
+const bucketBoundary = getRequiredElement<HTMLSelectElement>("#bucketBoundary");
+const bucketReferenceBoundary = getRequiredElement<HTMLInputElement>("#bucketReferenceBoundary");
 const canvasMessage = getRequiredElement<HTMLElement>("#canvasMessage");
 const colorInput = getRequiredElement<HTMLInputElement>("#colorInput");
 const colorValue = getRequiredElement<HTMLElement>("#colorValue");
@@ -100,6 +125,7 @@ const traceOpacityControl = getRequiredElement<HTMLDivElement>("#traceOpacityCon
 const traceOpacityInput = getRequiredElement<HTMLInputElement>("#traceOpacity");
 const traceOpacityValue = getRequiredElement<HTMLOutputElement>("#traceOpacityValue");
 const makeTraceableButton = getRequiredElement<HTMLButtonElement>("#makeTraceableButton");
+const learnReferenceButton = getRequiredElement<HTMLButtonElement>("#learnReferenceButton");
 const referenceVisibleInput = getRequiredElement<HTMLInputElement>("#referenceVisibleInput");
 const tracingGridInput = getRequiredElement<HTMLInputElement>("#tracingGridInput");
 const tracingGridSizeInput = getRequiredElement<HTMLInputElement>("#tracingGridSize");
@@ -109,10 +135,40 @@ const eraserCursor = getRequiredElement<HTMLDivElement>("#eraserCursor");
 const assetLibrary = getRequiredElement<HTMLUListElement>("#assetLibrary");
 const assetLibraryMessage = getRequiredElement<HTMLElement>("#assetLibraryMessage");
 const saveArtworkButton = getRequiredElement<HTMLButtonElement>("#saveArtworkButton");
+const learnToDrawButton = getRequiredElement<HTMLButtonElement>("#learnToDrawButton");
+const learnWorkspace = getRequiredElement<HTMLElement>("#learnWorkspace");
+const learnWorkspaceDescription = getRequiredElement<HTMLElement>("#learnWorkspaceDescription");
+const lessonCatalog = getRequiredElement<HTMLDivElement>("#lessonCatalog");
+const activeLesson = getRequiredElement<HTMLElement>("#activeLesson");
+const lessonProgressText = getRequiredElement<HTMLElement>("#lessonProgressText");
+const lessonProgressBar = getRequiredElement<HTMLProgressElement>("#lessonProgressBar");
+const lessonStageHeading = getRequiredElement<HTMLHeadingElement>("#lessonStageHeading");
+const lessonInstruction = getRequiredElement<HTMLElement>("#lessonInstruction");
+const lessonHint = getRequiredElement<HTMLElement>("#lessonHint");
+const showOriginalButton = getRequiredElement<HTMLButtonElement>("#showOriginalButton");
+const showConstructionGuidesButton = getRequiredElement<HTMLButtonElement>("#showConstructionGuidesButton");
+const showMainOutlineButton = getRequiredElement<HTMLButtonElement>("#showMainOutlineButton");
+const showDetailedOutlineButton = getRequiredElement<HTMLButtonElement>("#showDetailedOutlineButton");
+const hideLessonReferenceButton = getRequiredElement<HTMLButtonElement>("#hideLessonReferenceButton");
+const previousLessonStepButton = getRequiredElement<HTMLButtonElement>("#previousLessonStepButton");
+const nextLessonStepButton = getRequiredElement<HTMLButtonElement>("#nextLessonStepButton");
+const toggleLessonHintButton = getRequiredElement<HTMLButtonElement>("#toggleLessonHintButton");
+const saveLessonProgressButton = getRequiredElement<HTMLButtonElement>("#saveLessonProgressButton");
+const resetLessonButton = getRequiredElement<HTMLButtonElement>("#resetLessonButton");
+const exitLessonButton = getRequiredElement<HTMLButtonElement>("#exitLessonButton");
+const finishLessonButton = getRequiredElement<HTMLButtonElement>("#finishLessonButton");
+const lessonCompletionMessage = getRequiredElement<HTMLElement>("#lessonCompletionMessage");
+const lessonGuideCanvas = getRequiredElement<HTMLCanvasElement>("#lessonGuideCanvas");
+const lessonGuideContext = getCanvasContext(lessonGuideCanvas);
 const exportWithReferenceButton = getRequiredElement<HTMLButtonElement>("#exportWithReferenceButton");
 const undoButton = getRequiredElement<HTMLButtonElement>("#undoButton");
 const redoButton = getRequiredElement<HTMLButtonElement>("#redoButton");
-const clearButton = getRequiredElement<HTMLButtonElement>("#clearButton");
+const clearActiveLayerButton = getRequiredElement<HTMLButtonElement>("#clearActiveLayerButton");
+const clearAllArtworkButton = getRequiredElement<HTMLButtonElement>("#clearAllArtworkButton");
+const clearConfirmation = getRequiredElement<HTMLDivElement>("#clearConfirmation");
+const confirmClearAllArtworkButton = getRequiredElement<HTMLButtonElement>("#confirmClearAllArtworkButton");
+const cancelClearAllArtworkButton = getRequiredElement<HTMLButtonElement>("#cancelClearAllArtworkButton");
+const clearMenu = getRequiredElement<HTMLDetailsElement>("#clearMenu");
 const saveButton = getRequiredElement<HTMLButtonElement>("#saveButton");
 const zoomOutButton = getRequiredElement<HTMLButtonElement>("#zoomOutButton");
 const zoomInButton = getRequiredElement<HTMLButtonElement>("#zoomInButton");
@@ -224,6 +280,10 @@ let currentReferenceVisible = true;
 let tracingGridVisible = false;
 let tracingGridSize = 50;
 let traceSettings: TracingSettings | null = null;
+let lessonProgress: LessonProgress | null = null;
+let lessonCatalogOpen = false;
+let lessonGuideGeneration = 0;
+let isLessonStarting = false;
 let saveTimer: number | undefined;
 let history: string[] = [];
 let historyIndex = -1;
@@ -259,12 +319,16 @@ function updateHistoryButtons(): void {
   const isBusy = isFilling || isHistoryRestoring || isProjectLoading;
   undoButton.disabled = isBusy || historyIndex <= 0;
   redoButton.disabled = isBusy || historyIndex >= history.length - 1;
-  clearButton.disabled = isBusy;
+  clearActiveLayerButton.disabled = isBusy;
+  clearAllArtworkButton.disabled = isBusy;
+  confirmClearAllArtworkButton.disabled = isBusy;
+  cancelClearAllArtworkButton.disabled = isBusy;
   saveButton.disabled = isBusy;
   saveArtworkButton.disabled = isBusy || isAssetSaving;
   traceOpacityInput.disabled = isBusy || traceImage.hidden;
   traceInput.disabled = isBusy;
   makeTraceableButton.disabled = isBusy || !currentReferenceBlob;
+  learnReferenceButton.disabled = isBusy || isLessonStarting || !currentReferenceBlob;
   saveTracingGuideButton.disabled =
     isBusy || isTracingProcessing || isTracingSaving || !latestProcessedTracingImage;
   startTracingButton.disabled =
@@ -278,6 +342,13 @@ function updateHistoryButtons(): void {
   referenceVisibleInput.disabled = isBusy || traceImage.hidden;
   tracingGridInput.disabled = isBusy || traceImage.hidden;
   tracingGridSizeInput.disabled = isBusy || traceImage.hidden;
+  learnToDrawButton.disabled = isBusy || isLessonStarting;
+  for (const button of lessonCatalog.querySelectorAll<HTMLButtonElement>("button")) {
+    button.disabled = isBusy || isLessonStarting;
+  }
+  for (const button of activeLesson.querySelectorAll<HTMLButtonElement>("button")) {
+    button.disabled = isBusy || isLessonStarting;
+  }
   removeTraceButton.disabled = isBusy;
   centerImageButton.disabled = isBusy;
   exportWithReferenceButton.disabled =
@@ -304,6 +375,7 @@ function createCurrentProject(
     tracingGridVisible,
     tracingGridSize,
     traceSettings,
+    lessonProgress,
   );
 }
 
@@ -416,6 +488,7 @@ async function restoreCanvas(index: number): Promise<void> {
     tracingGridVisible = project.tracingGridVisible ?? false;
     tracingGridSize = project.tracingGridSize ?? 50;
     traceSettings = project.traceSettings ?? null;
+    lessonProgress = project.lessonProgress ?? null;
     await restoreProjectReference(
       project.referenceAssetId ?? null,
       project.referenceOpacity ?? 0.28,
@@ -425,6 +498,7 @@ async function restoreCanvas(index: number): Promise<void> {
     );
     refreshLayerPanel();
     renderLayers();
+    renderLessonWorkspace();
     historyIndex = index;
     scheduleSave();
   } catch (error) {
@@ -482,27 +556,7 @@ function drawActiveStrokeSegment(
   }
 
   if (activeTool === "eraser") {
-    context.save();
-    context.globalCompositeOperation = "destination-out";
-    context.globalAlpha = isSoftEraser ? 0.6 : 1;
-    context.lineWidth = Number(sizeInput.value);
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.strokeStyle = "#000";
-    context.shadowColor = isSoftEraser ? "rgba(0, 0, 0, 0.65)" : "transparent";
-    context.shadowBlur = isSoftEraser ? Number(sizeInput.value) * 0.35 : 0;
-    context.beginPath();
-    context.moveTo(start.x, start.y);
-    context.lineTo(
-      Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
-        ? start.x + 0.01
-        : end.x,
-      Math.abs(end.x - start.x) + Math.abs(end.y - start.y) < 0.01
-        ? start.y + 0.01
-        : end.y,
-    );
-    context.stroke();
-    context.restore();
+    eraseSegment(context, start, end, Number(sizeInput.value), isSoftEraser);
     renderLayers();
     return;
   }
@@ -773,6 +827,7 @@ function setReferenceImage(
   removeTraceButton.hidden = false;
   centerImageButton.hidden = false;
   makeTraceableButton.hidden = false;
+  learnReferenceButton.hidden = false;
   traceOpacityControl.hidden = false;
   updateReferenceVisibility();
   return nextObjectUrl;
@@ -784,6 +839,7 @@ function clearReferenceImage(preserveAssetId = false): void {
   removeTraceButton.hidden = true;
   centerImageButton.hidden = true;
   makeTraceableButton.hidden = true;
+  learnReferenceButton.hidden = true;
   traceOpacityControl.hidden = true;
   if (traceObjectUrl) {
     URL.revokeObjectURL(traceObjectUrl);
@@ -908,18 +964,56 @@ async function fillCanvasRegion(point: { x: number; y: number }): Promise<void> 
     }
 
     const targetContext = context;
+    const boundaryContext = colorSampleContext;
+    boundaryContext.clearRect(0, 0, canvas.width, canvas.height);
+    if (bucketBoundary.value === "visible") {
+      layerManager.render(boundaryContext);
+    } else {
+      boundaryContext.drawImage(layerManager.activeLayer.canvas, 0, 0);
+    }
+    if (!traceImage.hidden && currentReferenceVisible && bucketReferenceBoundary.checked && traceImage.complete && traceImage.naturalWidth > 0) {
+      boundaryContext.globalAlpha = Number(traceOpacityInput.value) / 100;
+      drawImageContained(boundaryContext, traceImage, canvas.width, canvas.height);
+      boundaryContext.globalAlpha = 1;
+    }
+    const boundaryData = boundaryContext.getImageData(0, 0, canvas.width, canvas.height);
     const imageData = targetContext.getImageData(0, 0, canvas.width, canvas.height);
-    const fillColor = colorToRgba(colorInput.value);
     const tolerance = Number(fillToleranceInput.value);
-    const changed = await floodFillPixels(
-      imageData.data,
+    const mask = await createFloodFillMask(
+      boundaryData.data,
       imageData.width,
       imageData.height,
       x,
       y,
-      fillColor,
       tolerance,
+      bucketGapClosing.value as GapClosing,
     );
+    const first = colorToRgba(colorInput.value);
+    const second = colorToRgba(bucketSecondaryColor.value);
+    const opacity = Number(bucketOpacity.value) / 100;
+    let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+    for (let index = 0; index < mask.length; index += 1) if (mask[index]) {
+      const px = index % canvas.width; const py = Math.floor(index / canvas.width);
+      minX = Math.min(minX, px); minY = Math.min(minY, py); maxX = Math.max(maxX, px); maxY = Math.max(maxY, py);
+    }
+    const colorAt = (px: number, py: number): readonly [number, number, number, number] => {
+      if (bucketFillStyle.value === "gradient") {
+        const dx = Math.max(1, maxX - minX);
+        const t = bucketGradientMode.value === "radial"
+          ? Math.min(1, Math.hypot(px - (minX + dx / 2), py - (minY + Math.max(1, maxY - minY) / 2)) / Math.max(1, Math.hypot(dx, Math.max(1, maxY - minY)) / 2))
+          : Math.max(0, Math.min(1, ((px - minX) * Math.cos(Number(bucketGradientAngle.value) * Math.PI / 180) + (py - minY) * Math.sin(Number(bucketGradientAngle.value) * Math.PI / 180)) / Math.max(1, Math.hypot(dx, maxY - minY))));
+        return [Math.round(first[0] + (second[0] - first[0]) * t), Math.round(first[1] + (second[1] - first[1]) * t), Math.round(first[2] + (second[2] - first[2]) * t), 255];
+      }
+      if (bucketFillStyle.value === "texture") {
+        const stripe = bucketTexture.value === "stripes" && Math.floor((px + py) / 8) % 2 === 0;
+        const dot = bucketTexture.value === "dots" && (px % 12 < 3 && py % 12 < 3);
+        const cross = bucketTexture.value === "crosshatch" && (px + py) % 10 < 2;
+        const noise = bucketTexture.value === "crayon" && ((px * 17 + py * 31) % 23 < 8);
+        return (stripe || dot || cross || noise) ? second : first;
+      }
+      return first;
+    };
+    const changed = paintMask(imageData.data, mask, imageData.width, colorAt, opacity);
 
     if (!changed) {
       announce("That area already matches the selected color.");
@@ -951,6 +1045,8 @@ function setActiveTool(tool: Tool): void {
   }
   selectedToolName.textContent = toolLabels[tool];
   bucketSettings.hidden = tool !== "bucket";
+  paintBucketQuickButton.classList.toggle("is-selected", tool === "bucket");
+  bucketSecondaryColorControl.hidden = bucketFillStyle.value !== "gradient";
   eraserSettings.hidden = tool !== "eraser";
   eraserQuickButton.classList.toggle("is-selected", tool === "eraser");
   sizeControlLabel.textContent = tool === "eraser" ? "Eraser size" : "Brush size";
@@ -970,6 +1066,13 @@ function setActiveTool(tool: Tool): void {
 
   updateCanvasCursor();
 }
+
+paintBucketQuickButton.addEventListener("click", () => setActiveTool("bucket"));
+bucketFillStyle.addEventListener("change", () => {
+  bucketSecondaryColorControl.hidden = bucketFillStyle.value !== "gradient";
+});
+bucketOpacity.addEventListener("input", () => { bucketOpacityValue.value = `${bucketOpacity.value}%`; });
+bucketGradientAngle.addEventListener("input", () => { bucketGradientAngleValue.value = `${bucketGradientAngle.value}°`; });
 
 function updateCanvasCursor(): void {
   const handActive = activeTool === "hand" || isSpaceHandActive;
@@ -1023,24 +1126,46 @@ const assetSourceLabels: Record<ImageAssetSource, string> = {
   "coloring-page": "Coloring page",
   sticker: "Sticker",
   processed: "Tracing guide",
+  lesson: "Lesson",
 };
 let assetLibraryRefreshId = 0;
+const assetPreviewObjectUrls: string[] = [];
 
 async function refreshAssetLibrary(): Promise<void> {
   const refreshId = ++assetLibraryRefreshId;
+  for (const objectUrl of assetPreviewObjectUrls) URL.revokeObjectURL(objectUrl);
+  assetPreviewObjectUrls.length = 0;
   assetLibrary.replaceChildren();
   assetLibraryMessage.textContent = "Loading saved images…";
 
   try {
-    const assets = await assetManager.listImages();
+    const storedAssets = await assetManager.listImages();
     if (refreshId !== assetLibraryRefreshId) return;
+    const assets = storedAssets.filter((asset) => asset.source !== "lesson");
     assetLibraryMessage.textContent = assets.length
       ? ""
       : "Images you upload or save from your artwork will appear here.";
 
+    const imageAssets = await Promise.all(
+      assets.map(async (asset) => {
+        const storedAsset = await assetManager.getImage(asset.id);
+        if (!storedAsset) throw new Error(`Saved image ${asset.id} is missing.`);
+        return storedAsset;
+      }),
+    );
+    if (refreshId !== assetLibraryRefreshId) return;
+
     for (const asset of assets) {
+      const storedAsset = imageAssets.find((image) => image.id === asset.id);
+      if (!storedAsset) throw new Error(`Saved image ${asset.id} is missing.`);
       const row = document.createElement("li");
       row.className = "asset-row";
+      const preview = document.createElement("img");
+      const objectUrl = URL.createObjectURL(storedAsset.blob);
+      assetPreviewObjectUrls.push(objectUrl);
+      preview.className = "asset-thumbnail";
+      preview.src = objectUrl;
+      preview.alt = `${asset.name} preview`;
       const details = document.createElement("span");
       details.className = "asset-details";
       details.textContent = `${asset.name} · ${assetSourceLabels[asset.source]}`;
@@ -1076,10 +1201,30 @@ async function refreshAssetLibrary(): Promise<void> {
         });
       });
 
+      const useAsReferenceButton = document.createElement("button");
+      useAsReferenceButton.className = "layer-action-button asset-trace-button";
+      useAsReferenceButton.type = "button";
+      useAsReferenceButton.textContent = "Use as Reference";
+      useAsReferenceButton.setAttribute("aria-label", `Use ${asset.name} as reference`);
+      useAsReferenceButton.disabled = isProjectLoading || isHistoryRestoring;
+      useAsReferenceButton.addEventListener("click", () => {
+        void useSavedImageAsReference(asset.id);
+      });
+
+      const learnButton = document.createElement("button");
+      learnButton.className = "layer-action-button asset-trace-button";
+      learnButton.type = "button";
+      learnButton.textContent = "Learn to Draw This";
+      learnButton.setAttribute("aria-label", `Learn to draw ${asset.name}`);
+      learnButton.disabled = isProjectLoading || isHistoryRestoring || isLessonStarting;
+      learnButton.addEventListener("click", () => {
+        void startImageLesson(asset.id);
+      });
+
       const actions = document.createElement("div");
       actions.className = "asset-actions";
-      actions.append(traceButton, makeTraceable);
-      row.append(details, actions);
+      actions.append(traceButton, makeTraceable, useAsReferenceButton, learnButton);
+      row.append(preview, details, actions);
       assetLibrary.append(row);
     }
   } catch (error) {
@@ -1087,6 +1232,20 @@ async function refreshAssetLibrary(): Promise<void> {
     assetLibraryMessage.textContent =
       "The saved image library is unavailable. You can still draw and use an uploaded image until you close this page.";
     console.error("Could not load the saved image library.", error);
+  }
+}
+
+async function useSavedImageAsReference(assetId: string): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling) return;
+  try {
+    const asset = await assetManager.getImage(assetId);
+    if (!asset) throw new Error("The selected saved image no longer exists.");
+    setReferenceImage(asset.blob, asset.id, asset.id, null);
+    rememberCanvas();
+    announce(`${asset.name} is ready as a reference.`);
+  } catch (error) {
+    announce("Couldn't use that saved image as a reference.");
+    console.error("Could not use a saved image as a reference.", error);
   }
 }
 
@@ -1114,6 +1273,449 @@ function canvasToBlob(source: HTMLCanvasElement): Promise<Blob> {
       resolve(blob);
     }, "image/png");
   });
+}
+
+const lessonStageTitles = [
+  "Observe",
+  "Basic Shapes",
+  "Main Outlines",
+  "Fine Details",
+  "Draw Independently",
+  "Color and Finish",
+] as const;
+
+const lessonStageInstructions = [
+  "Look at the whole picture first. Notice its broad silhouette, proportions, and where the largest parts sit.",
+  "Use the construction guides to plan simple shapes and proportions. These guides are suggestions, not automatic object recognition.",
+  "Use the simplified outline as a separate reference. Draw the main contours on the transparent artwork layer.",
+  "Compare the original and detailed outline, then add smaller features with a thinner brush if you like.",
+  "Hide the reference and try drawing from memory. You can reveal it again whenever you need a hint.",
+  "Choose brushes and colors, fill larger areas, erase mistakes, and add your finishing details.",
+] as const;
+
+const lessonStageHints = [
+  "Look for the largest shapes first.",
+  "Try drawing the main forms with simple circles, ovals, or boxes.",
+  "Follow the major outside edges before drawing interior lines.",
+  "Zoom in and use a smaller brush for tiny features.",
+  "Try hiding the reference and drawing from memory.",
+  "Start with large color areas before adding shadows.",
+] as const;
+
+function renderLessonGuide(): void {
+  lessonGuideGeneration += 1;
+  const generation = lessonGuideGeneration;
+  lessonGuideContext.clearRect(0, 0, lessonGuideCanvas.width, lessonGuideCanvas.height);
+  const progress = lessonProgress;
+  if (
+    !progress ||
+    !progress.workspaceVisible ||
+    progress.currentStage !== 2 ||
+    !progress.constructionGuidesVisible
+  ) return;
+
+  const svg = getStarterLesson(progress.lessonId)?.constructionSvg ??
+    genericConstructionGuide();
+  const objectUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(objectUrl);
+    if (generation !== lessonGuideGeneration) return;
+    lessonGuideContext.drawImage(image, 0, 0, lessonGuideCanvas.width, lessonGuideCanvas.height);
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    console.error("Could not display the construction guide.");
+  };
+  image.src = objectUrl;
+}
+
+function renderLessonWorkspace(): void {
+  const progress = lessonProgress;
+  const workspaceVisible = progress ? progress.workspaceVisible : lessonCatalogOpen;
+  learnWorkspace.hidden = !workspaceVisible;
+  activeLesson.hidden = !progress || !progress.workspaceVisible;
+  learnToDrawButton.textContent =
+    progress && !progress.workspaceVisible && !progress.completed
+      ? "Resume Lesson"
+      : "Learn to Draw";
+
+  if (!progress) {
+    learnWorkspaceDescription.textContent =
+      "Choose an original starter lesson or learn from an image in My Images.";
+    renderLessonGuide();
+    return;
+  }
+
+  const stageIndex = progress.currentStage - 1;
+  lessonProgressText.textContent = `Step ${progress.currentStage} of 6`;
+  lessonProgressBar.value = progress.currentStage;
+  lessonStageHeading.textContent = lessonStageTitles[stageIndex]!;
+  lessonInstruction.textContent = lessonStageInstructions[stageIndex]!;
+  const starter = getStarterLesson(progress.lessonId);
+  lessonHint.textContent = progress.currentStage === 2 && starter
+    ? `${lessonStageHints[stageIndex]} ${starter.constructionHint}`
+    : lessonStageHints[stageIndex]!;
+  lessonHint.hidden = !progress.hintVisible;
+  toggleLessonHintButton.textContent = progress.hintVisible ? "Hide Hint" : "Show Hint";
+  showConstructionGuidesButton.hidden = progress.currentStage !== 2;
+  showConstructionGuidesButton.textContent =
+    progress.constructionGuidesVisible ? "Hide Guides" : "Show Construction Guides";
+  showMainOutlineButton.hidden = progress.currentStage !== 3;
+  showDetailedOutlineButton.hidden = progress.currentStage !== 4;
+  hideLessonReferenceButton.hidden = !progress.referenceVisible;
+  previousLessonStepButton.disabled = progress.currentStage === 1;
+  nextLessonStepButton.hidden = progress.currentStage === 6;
+  finishLessonButton.hidden = progress.currentStage !== 6;
+  finishLessonButton.disabled = progress.completed;
+  finishLessonButton.textContent = progress.completed ? "Lesson Finished" : "Finish Lesson";
+  lessonCompletionMessage.hidden = !progress.completed;
+  lessonCompletionMessage.textContent = progress.completed
+    ? "Nice work! Your drawing is still editable on the canvas."
+    : "";
+  learnWorkspaceDescription.textContent =
+    `${progress.title} · Your artwork is separate from the reference and guides.`;
+  renderLessonGuide();
+}
+
+function initializeLessonCatalog(): void {
+  lessonCatalog.replaceChildren();
+  for (const lesson of STARTER_LESSONS) {
+    const button = document.createElement("button");
+    button.className = "lesson-catalog-button";
+    button.type = "button";
+    button.textContent = lesson.title;
+    button.setAttribute("aria-label", `Start ${lesson.title} lesson`);
+    button.addEventListener("click", () => {
+      void startStarterLesson(lesson.id);
+    });
+    lessonCatalog.append(button);
+  }
+}
+
+async function readImagePixels(blob: Blob): Promise<RasterImageData> {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const scale = Math.min(1, 1400 / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const sourceCanvas = document.createElement("canvas");
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+    const sourceContext = getCanvasContext(sourceCanvas);
+    sourceContext.drawImage(image, 0, 0, width, height);
+    const imageData = sourceContext.getImageData(0, 0, width, height);
+    return { data: imageData.data, width, height };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function createLessonOutlineAsset(
+  image: RasterImageData,
+  name: string,
+  settings: TracingSettings,
+): Promise<ImageAssetMetadata> {
+  const result = await tracingProcessor.process(image, settings);
+  const outputCanvas = document.createElement("canvas");
+  outputCanvas.width = result.width;
+  outputCanvas.height = result.height;
+  const outputContext = getCanvasContext(outputCanvas);
+  const output = outputContext.createImageData(result.width, result.height);
+  output.data.set(result.data);
+  outputContext.putImageData(output, 0, 0);
+  const blob = await canvasToBlob(outputCanvas);
+  return assetManager.saveImage(blob, name, "lesson");
+}
+
+function createLessonProgress(
+  lessonId: string,
+  title: string,
+  sourceImageId: string,
+  originalReferenceId: string,
+  processedReferenceId: string,
+  detailedReferenceId: string,
+): LessonProgress {
+  return {
+    lessonId,
+    title,
+    sourceImageId,
+    originalReferenceId,
+    processedReferenceId,
+    detailedReferenceId,
+    currentStage: 1,
+    drawingProjectId: projectId,
+    constructionGuidesVisible: false,
+    referenceVisible: true,
+    referenceOpacity: Number(traceOpacityInput.value) / 100,
+    selectedReference: "original",
+    hintVisible: false,
+    workspaceVisible: true,
+    completed: false,
+    mainOutlineSettings: { ...TRACING_PRESETS.beginner },
+    detailedOutlineSettings: { ...TRACING_PRESETS.advanced },
+  };
+}
+
+async function showLessonReference(
+  reference: Exclude<LessonReference, null>,
+  visible = true,
+): Promise<void> {
+  if (!lessonProgress) return;
+  const progress = lessonProgress;
+  const assetId =
+    reference === "original"
+      ? progress.originalReferenceId
+      : reference === "main-outline"
+        ? progress.processedReferenceId
+        : progress.detailedReferenceId;
+  const asset = await assetManager.getImage(assetId);
+  if (!asset) throw new Error(`The lesson reference ${assetId} is unavailable.`);
+
+  const settings =
+    reference === "main-outline"
+      ? progress.mainOutlineSettings
+      : reference === "detailed-outline"
+        ? progress.detailedOutlineSettings
+        : null;
+  setReferenceImage(asset.blob, asset.id, progress.originalReferenceId, settings);
+  const opacity = Math.round(progress.referenceOpacity * 100);
+  traceOpacityInput.value = String(opacity);
+  traceOpacityValue.value = `${opacity}%`;
+  traceImage.style.opacity = String(opacity / 100);
+  currentReferenceVisible = visible;
+  lessonProgress = {
+    ...progress,
+    selectedReference: reference,
+    referenceVisible: visible,
+  };
+  updateReferenceVisibility();
+}
+
+async function resumeLesson(): Promise<void> {
+  if (!lessonProgress || isLessonStarting) return;
+  isLessonStarting = true;
+  updateHistoryButtons();
+  try {
+    lessonProgress = { ...lessonProgress, workspaceVisible: true };
+    const reference = lessonProgress.selectedReference ?? "original";
+    await showLessonReference(reference, lessonProgress.referenceVisible);
+    renderLessonWorkspace();
+    rememberCanvas();
+    learnWorkspace.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    announce("Couldn't resume the saved lesson references.");
+    console.error("Could not resume the saved lesson.", error);
+  } finally {
+    isLessonStarting = false;
+    updateHistoryButtons();
+  }
+}
+
+async function startLessonFromAsset(
+  assetId: string | null,
+  lessonId: string,
+  title: string,
+  sourceBlob?: Blob,
+): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling || isLessonStarting) return;
+  if (lessonProgress?.lessonId === lessonId) {
+    await resumeLesson();
+    return;
+  }
+
+  isLessonStarting = true;
+  learnWorkspaceDescription.textContent = `Preparing ${title} and its separate drawing guides…`;
+  updateHistoryButtons();
+  try {
+    let source = assetId ? await assetManager.getImage(assetId) : undefined;
+    if (!assetId && sourceBlob) {
+      const savedSource = await assetManager.saveImage(
+        sourceBlob,
+        `${title} - original`,
+        "lesson",
+      );
+      source = await assetManager.getImage(savedSource.id);
+    }
+    if (!source) throw new Error("The selected source image is no longer available.");
+    const imagePixels = await readImagePixels(source.blob);
+    const [mainOutline, detailedOutline] = await Promise.all([
+      createLessonOutlineAsset(imagePixels, `${title} - main outline`, TRACING_PRESETS.beginner),
+      createLessonOutlineAsset(imagePixels, `${title} - detailed outline`, TRACING_PRESETS.advanced),
+    ]);
+
+    lessonProgress = createLessonProgress(
+      lessonId,
+      title,
+      source.id,
+      source.id,
+      mainOutline.id,
+      detailedOutline.id,
+    );
+    const artworkLayer = layerManager.addLayer("Lesson Artwork");
+    context = artworkLayer.context;
+    refreshLayerPanel();
+    renderLayers();
+    viewport.fitToScreen(getViewportSize(), getArtworkSize());
+    applyViewport();
+    await showLessonReference("original");
+    renderLessonWorkspace();
+    rememberCanvas();
+    learnWorkspace.scrollIntoView({ behavior: "smooth", block: "start" });
+    announce(`${title} is ready. Your drawing will stay separate from the guides.`);
+  } catch (error) {
+    learnWorkspaceDescription.textContent =
+      "The lesson could not be prepared. Your existing artwork has been kept.";
+    announce("Couldn't prepare this drawing lesson.");
+    console.error("Could not prepare a drawing lesson.", error);
+  } finally {
+    isLessonStarting = false;
+    updateHistoryButtons();
+  }
+}
+
+async function startStarterLesson(lessonId: string): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling || isLessonStarting) return;
+  const lesson = getStarterLesson(lessonId);
+  if (!lesson) {
+    announce("That starter lesson is unavailable.");
+    return;
+  }
+  if (lessonProgress?.lessonId === `starter-${lesson.id}`) {
+    await resumeLesson();
+    return;
+  }
+  await startLessonFromAsset(
+    null,
+    `starter-${lesson.id}`,
+    lesson.title,
+    new Blob([lesson.sourceSvg], { type: "image/svg+xml" }),
+  );
+}
+
+async function startImageLesson(assetId: string): Promise<void> {
+  if (isProjectLoading || isHistoryRestoring || isFilling || isLessonStarting) return;
+  try {
+    const asset = await assetManager.getImage(assetId);
+    if (!asset) throw new Error("The selected saved image no longer exists.");
+    await startLessonFromAsset(asset.id, `image-${asset.id}`, asset.name);
+  } catch (error) {
+    announce("Couldn't start a lesson from that saved image.");
+    console.error("Could not start a lesson from a saved image.", error);
+  }
+}
+
+async function changeCurrentLessonStage(direction: -1 | 1): Promise<void> {
+  if (!lessonProgress) return;
+  const next = changeLessonStage(lessonProgress, direction);
+  if (next.currentStage === lessonProgress.currentStage) return;
+  lessonProgress = next;
+  renderLessonWorkspace();
+  try {
+    const reference = next.selectedReference ?? "original";
+    await showLessonReference(reference, next.referenceVisible);
+    renderLessonWorkspace();
+    rememberCanvas();
+  } catch (error) {
+    announce("Couldn't change the lesson reference.");
+    console.error("Could not change lesson stage references.", error);
+  }
+}
+
+async function resetCurrentLesson(): Promise<void> {
+  if (!lessonProgress) return;
+  lessonProgress = {
+    ...lessonProgress,
+    currentStage: 1,
+    constructionGuidesVisible: false,
+    referenceVisible: true,
+    selectedReference: "original",
+    hintVisible: false,
+    workspaceVisible: true,
+    completed: false,
+  };
+  try {
+    await showLessonReference("original");
+    renderLessonWorkspace();
+    rememberCanvas();
+    announce("Lesson restarted. Your drawing was kept.");
+  } catch (error) {
+    announce("Couldn't reset the lesson steps.");
+    console.error("Could not reset lesson progress.", error);
+  }
+}
+
+function exitCurrentLesson(): void {
+  if (!lessonProgress) return;
+  lessonProgress = {
+    ...lessonProgress,
+    constructionGuidesVisible: false,
+    referenceVisible: false,
+    workspaceVisible: false,
+  };
+  currentReferenceVisible = false;
+  updateReferenceVisibility();
+  renderLessonWorkspace();
+  rememberCanvas();
+  announce("Lesson progress saved. Choose Resume Lesson whenever you're ready.");
+}
+
+function finishCurrentLesson(): void {
+  if (!lessonProgress || lessonProgress.currentStage !== 6) return;
+  lessonProgress = {
+    ...lessonProgress,
+    completed: true,
+    workspaceVisible: true,
+    constructionGuidesVisible: false,
+  };
+  renderLessonWorkspace();
+  rememberCanvas();
+  announce("Lesson finished. Your drawing is still editable.");
+}
+
+function saveCurrentLessonProgress(): void {
+  if (!lessonProgress) return;
+  lessonProgress = {
+    ...lessonProgress,
+    workspaceVisible: true,
+    referenceVisible: currentReferenceVisible,
+    referenceOpacity: Number(traceOpacityInput.value) / 100,
+  };
+  renderLessonWorkspace();
+  rememberCanvas();
+  announce("Lesson progress saved on this device.");
+}
+
+function selectLessonReference(reference: Exclude<LessonReference, null>): void {
+  void showLessonReference(reference)
+    .then(() => {
+      renderLessonWorkspace();
+      rememberCanvas();
+    })
+    .catch((error: unknown) => {
+      announce("Couldn't display that lesson reference.");
+      console.error("Could not display a lesson reference.", error);
+    });
+}
+
+function toggleLearnWorkspace(): void {
+  if (isProjectLoading || isHistoryRestoring || isLessonStarting) return;
+  if (lessonProgress) {
+    if (lessonProgress.workspaceVisible) {
+      learnWorkspace.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      void resumeLesson();
+    }
+    return;
+  }
+  lessonCatalogOpen = !lessonCatalogOpen;
+  renderLessonWorkspace();
+  if (lessonCatalogOpen) {
+    learnWorkspace.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function readTracingSettings(): TracingSettings {
@@ -1291,6 +1893,28 @@ function makeCurrentReferenceTraceable(): void {
     return;
   }
   void openTracingGenerator(currentReferenceBlob, null, "upload", "Tracing image");
+}
+
+async function learnFromCurrentReference(): Promise<void> {
+  try {
+    let assetId = currentReferenceAssetId ?? currentOriginalReferenceAssetId;
+    if (!assetId && currentReferenceAssetPromise) {
+      assetId = (await currentReferenceAssetPromise).id;
+    }
+    if (!assetId && currentReferenceBlob) {
+      const saved = await assetManager.saveImage(currentReferenceBlob, "Tracing image", "upload");
+      assetId = saved.id;
+      currentReferenceAssetId = saved.id;
+      currentOriginalReferenceAssetId = saved.id;
+      updateCurrentHistorySnapshot();
+      await refreshAssetLibrary();
+    }
+    if (!assetId) throw new Error("The current reference image is unavailable.");
+    await startImageLesson(assetId);
+  } catch (error) {
+    announce("Couldn't start a lesson from the current reference.");
+    console.error("Could not start a lesson from the current reference.", error);
+  }
 }
 
 async function ensureTracingGuideSaved(): Promise<{
@@ -1654,6 +2278,7 @@ async function loadSavedDrawing(): Promise<void> {
       tracingGridVisible = savedProject.tracingGridVisible ?? false;
       tracingGridSize = savedProject.tracingGridSize ?? 50;
       traceSettings = savedProject.traceSettings ?? null;
+      lessonProgress = savedProject.lessonProgress ?? null;
       await restoreProjectReference(
         savedProject.referenceAssetId ?? null,
         savedProject.referenceOpacity ?? 0.28,
@@ -1663,6 +2288,7 @@ async function loadSavedDrawing(): Promise<void> {
       );
       renderLayers();
       refreshLayerPanel();
+      renderLessonWorkspace();
       initializeHistory();
       updateSaveStatus("Your last drawing is back");
       return;
@@ -2129,16 +2755,13 @@ function downloadDrawing(includeReference: boolean): void {
   }
 
   try {
-    exportContext.fillStyle = backgroundInput.value;
-    exportContext.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-
-    if (includeReference && traceImage.naturalWidth > 0) {
-      exportContext.globalAlpha = Number(traceOpacityInput.value) / 100;
-      drawImageContained(exportContext, traceImage, exportCanvas.width, exportCanvas.height);
-      exportContext.globalAlpha = 1;
-    }
-
-    exportContext.drawImage(canvas, 0, 0);
+    drawExportContent(
+      exportContext,
+      canvas,
+      backgroundInput.value,
+      includeReference && traceImage.naturalWidth > 0 ? traceImage : null,
+      Number(traceOpacityInput.value) / 100,
+    );
     const downloadLink = document.createElement("a");
     downloadLink.download = includeReference
       ? "my-drawing-with-reference.png"
@@ -2156,16 +2779,68 @@ function downloadDrawing(includeReference: boolean): void {
   }
 }
 
-clearButton.addEventListener("click", () => {
+clearActiveLayerButton.addEventListener("click", () => {
   if (isFilling || isHistoryRestoring || isProjectLoading) return;
-  if (!layerManager.canEditActiveLayer) {
-    announce("Unlock and show the selected layer before clearing it.");
+  const activeLayer = layerManager.activeLayer;
+  if (!activeLayer.visible) {
+    announce("Show the selected layer before clearing it.");
     return;
   }
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  if (activeLayer.locked) {
+    announce("Unlock the selected layer before clearing it.");
+    return;
+  }
+  const result = layerManager.clearLayer(activeLayer.id);
+  if (result === "empty") {
+    announce("The selected layer is already empty.");
+    return;
+  }
+  if (result !== "cleared") {
+    announce("Couldn't clear the selected layer.");
+    return;
+  }
+  clearConfirmation.hidden = true;
+  clearMenu.open = false;
+  context = activeLayer.context;
+  refreshLayerPanel();
   renderLayers();
   rememberCanvas();
-  announce("Canvas cleared.");
+  announce("Active layer cleared.");
+});
+
+clearAllArtworkButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  clearConfirmation.hidden = false;
+  clearMenu.open = true;
+});
+
+confirmClearAllArtworkButton.addEventListener("click", () => {
+  if (isFilling || isHistoryRestoring || isProjectLoading) return;
+  const { clearedLayerIds, lockedLayerIds } = layerManager.clearEditableLayers();
+  clearConfirmation.hidden = true;
+  clearMenu.open = false;
+  if (clearedLayerIds.length === 0) {
+    announce(
+      lockedLayerIds.length > 0
+        ? "No editable artwork to clear. Locked layers were preserved."
+        : "There is no artwork to clear.",
+    );
+    return;
+  }
+
+  context = layerManager.activeLayer.context;
+  refreshLayerPanel();
+  renderLayers();
+  rememberCanvas();
+  announce(
+    lockedLayerIds.length > 0
+      ? `Cleared ${clearedLayerIds.length} layer(s). Locked layers were preserved.`
+      : "All editable artwork cleared.",
+  );
+});
+
+cancelClearAllArtworkButton.addEventListener("click", () => {
+  clearConfirmation.hidden = true;
 });
 
 saveButton.addEventListener("click", () => {
@@ -2174,6 +2849,39 @@ saveButton.addEventListener("click", () => {
 
 exportWithReferenceButton.addEventListener("click", () => downloadDrawing(true));
 saveArtworkButton.addEventListener("click", () => void saveArtworkToLibrary());
+learnToDrawButton.addEventListener("click", toggleLearnWorkspace);
+showOriginalButton.addEventListener("click", () => selectLessonReference("original"));
+showMainOutlineButton.addEventListener("click", () => selectLessonReference("main-outline"));
+showDetailedOutlineButton.addEventListener("click", () => selectLessonReference("detailed-outline"));
+showConstructionGuidesButton.addEventListener("click", () => {
+  if (!lessonProgress) return;
+  lessonProgress = {
+    ...lessonProgress,
+    constructionGuidesVisible: !lessonProgress.constructionGuidesVisible,
+  };
+  renderLessonWorkspace();
+  rememberCanvas();
+});
+hideLessonReferenceButton.addEventListener("click", () => {
+  if (!lessonProgress) return;
+  currentReferenceVisible = false;
+  lessonProgress = { ...lessonProgress, referenceVisible: false };
+  updateReferenceVisibility();
+  renderLessonWorkspace();
+  rememberCanvas();
+});
+previousLessonStepButton.addEventListener("click", () => void changeCurrentLessonStage(-1));
+nextLessonStepButton.addEventListener("click", () => void changeCurrentLessonStage(1));
+toggleLessonHintButton.addEventListener("click", () => {
+  if (!lessonProgress) return;
+  lessonProgress = { ...lessonProgress, hintVisible: !lessonProgress.hintVisible };
+  renderLessonWorkspace();
+  rememberCanvas();
+});
+saveLessonProgressButton.addEventListener("click", saveCurrentLessonProgress);
+resetLessonButton.addEventListener("click", () => void resetCurrentLesson());
+exitLessonButton.addEventListener("click", exitCurrentLesson);
+finishLessonButton.addEventListener("click", finishCurrentLesson);
 
 colorInput.addEventListener("input", () => {
   updateSelectedColor(colorInput.value);
@@ -2209,17 +2917,31 @@ backgroundInput.addEventListener("input", () => {
 traceOpacityInput.addEventListener("input", () => {
   traceOpacityValue.value = `${traceOpacityInput.value}%`;
   traceImage.style.opacity = String(Number(traceOpacityInput.value) / 100);
+  if (lessonProgress) {
+    lessonProgress = {
+      ...lessonProgress,
+      referenceOpacity: Number(traceOpacityInput.value) / 100,
+    };
+  }
   updateNavigator();
 });
 
 traceOpacityInput.addEventListener("change", rememberCanvas);
 
 makeTraceableButton.addEventListener("click", makeCurrentReferenceTraceable);
+learnReferenceButton.addEventListener("click", () => void learnFromCurrentReference());
 
 referenceVisibleInput.addEventListener("change", () => {
   if (traceImage.hidden) return;
   currentReferenceVisible = referenceVisibleInput.checked;
+  if (lessonProgress) {
+    lessonProgress = {
+      ...lessonProgress,
+      referenceVisible: currentReferenceVisible,
+    };
+  }
   updateReferenceVisibility();
+  renderLessonWorkspace();
   rememberCanvas();
 });
 
@@ -2419,6 +3141,8 @@ fillToleranceValue.value = fillToleranceInput.value;
 traceOpacityValue.value = `${traceOpacityInput.value}%`;
 tracingGridSizeValue.value = `${tracingGridSizeInput.value} px`;
 updateTracingControlOutputs();
+initializeLessonCatalog();
+renderLessonWorkspace();
 layoutCanvasPaper();
 viewport.fitToScreen(getViewportSize(), getArtworkSize());
 applyViewport();

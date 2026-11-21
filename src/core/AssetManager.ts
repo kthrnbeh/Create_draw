@@ -4,7 +4,8 @@ export type ImageAssetSource =
   | "generated"
   | "coloring-page"
   | "sticker"
-  | "processed";
+  | "processed"
+  | "lesson";
 
 export interface ImageAssetMetadata {
   id: string;
@@ -39,7 +40,8 @@ export function isImageAssetSource(value: unknown): value is ImageAssetSource {
     value === "generated" ||
     value === "coloring-page" ||
     value === "sticker" ||
-    value === "processed"
+    value === "processed" ||
+    value === "lesson"
   );
 }
 

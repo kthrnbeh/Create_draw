@@ -1,7 +1,8 @@
 import { isSerializedLayerState, } from "../layers/LayerManager.js";
 import { isTracingSettings, } from "../tracing/OutlineGenerator.js";
+import { isLessonProgress, } from "../lessons/LessonProgress.js";
 export const PROJECT_SCHEMA_VERSION = 1;
-export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString(), referenceAssetId = null, referenceOpacity = 0.28, referenceVisible = true, originalReferenceAssetId = null, tracingGridVisible = false, tracingGridSize = 50, traceSettings = null) {
+export function createProjectDocument(projectId, projectName, width, height, background, layerState, updatedAt = new Date().toISOString(), referenceAssetId = null, referenceOpacity = 0.28, referenceVisible = true, originalReferenceAssetId = null, tracingGridVisible = false, tracingGridSize = 50, traceSettings = null, lessonProgress = null) {
     return {
         ...layerState,
         schemaVersion: PROJECT_SCHEMA_VERSION,
@@ -18,6 +19,7 @@ export function createProjectDocument(projectId, projectName, width, height, bac
         tracingGridVisible,
         tracingGridSize,
         traceSettings,
+        lessonProgress,
     };
 }
 export function isProjectDocument(value) {
@@ -60,6 +62,9 @@ export function isProjectDocument(value) {
         (project.traceSettings === undefined ||
             project.traceSettings === null ||
             isTracingSettings(project.traceSettings)) &&
+        (project.lessonProgress === undefined ||
+            project.lessonProgress === null ||
+            isLessonProgress(project.lessonProgress)) &&
         isSerializedLayerState(project));
 }
 export function isLegacySavedDrawing(value) {

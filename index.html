@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#fffdf9" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Create Draw" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./favicon.svg" />
     <meta
       name="description"
       content="A cozy, simple drawing space for sketches, shapes, and ideas."
@@ -50,6 +56,9 @@
             <span class="eyebrow">YOUR SPACE</span>
             <h1>Make a mark.</h1>
             <p>Pick a tool and let your ideas wander.</p>
+            <button class="text-button learn-nav-button" id="learnToDrawButton" type="button">
+              Learn to Draw
+            </button>
           </div>
 
           <section class="control-group" aria-labelledby="toolsHeading">
@@ -115,6 +124,9 @@
             <button class="eraser-quick-button" id="eraserQuickButton" type="button">
               Eraser <span aria-hidden="true">· E</span>
             </button>
+            <button class="paint-bucket-quick-button" id="paintBucketQuickButton" type="button">
+              <span aria-hidden="true">▤</span> Paint Bucket <span aria-hidden="true">· B</span>
+            </button>
             <div class="tool-specific-settings eraser-settings" id="eraserSettings" hidden>
               <span class="control-label">Eraser edge</span>
               <div class="eraser-mode-options" role="group" aria-label="Eraser edge mode">
@@ -123,10 +135,37 @@
               </div>
             </div>
             <div class="tool-specific-settings" id="bucketSettings" hidden>
+              <label class="control-label" for="bucketFillStyle"><span>Fill style</span></label>
+              <select id="bucketFillStyle" class="control-select">
+                <option value="solid">Solid color</option>
+                <option value="gradient">Gradient</option>
+                <option value="texture">Texture</option>
+              </select>
+              <div class="bucket-secondary-color" id="bucketSecondaryColorControl" hidden>
+                <label class="control-label" for="bucketSecondaryColor"><span>Second color</span></label>
+                <input id="bucketSecondaryColor" type="color" value="#7187c8" aria-label="Second fill color" />
+                <select id="bucketGradientMode" class="control-select" aria-label="Gradient mode"><option value="linear">Linear</option><option value="radial">Radial</option></select>
+                <label class="control-label range-label" for="bucketGradientAngle"><span>Gradient angle</span><output id="bucketGradientAngleValue">0°</output></label>
+                <input id="bucketGradientAngle" class="range-input" type="range" min="0" max="360" value="0" />
+              </div>
+              <label class="control-label" for="bucketTexture"><span>Texture</span></label>
+              <select id="bucketTexture" class="control-select">
+                <option value="dots">Dots</option><option value="crosshatch">Crosshatch</option>
+                <option value="crayon">Crayon noise</option><option value="stripes">Stripes</option>
+              </select>
+              <label class="control-label" for="bucketGapClosing"><span>Gap closing</span></label>
+              <select id="bucketGapClosing" class="control-select">
+                <option value="off">Off</option><option value="small">Small</option><option value="medium">Medium</option>
+              </select>
               <label class="control-label range-label" for="fillTolerance">
                 <span>Fill tolerance</span><output id="fillToleranceValue" for="fillTolerance">18</output>
               </label>
               <input id="fillTolerance" class="range-input" type="range" min="0" max="100" value="18" />
+              <label class="control-label range-label" for="bucketOpacity"><span>Fill opacity</span><output id="bucketOpacityValue">100%</output></label>
+              <input id="bucketOpacity" class="range-input" type="range" min="0" max="100" value="100" />
+              <label class="control-label" for="bucketBoundary"><span>Boundary sampling</span></label>
+              <select id="bucketBoundary" class="control-select"><option value="active">Active layer</option><option value="visible">All visible artwork</option></select>
+              <label class="check-row" for="bucketReferenceBoundary"><input id="bucketReferenceBoundary" type="checkbox" /><span class="custom-check" aria-hidden="true"></span>Include tracing reference</label>
             </div>
           </section>
 
@@ -194,9 +233,12 @@
               <span>Change your canvas background</span>
             </div>
             <label class="upload-button" for="traceInput">
-              <span aria-hidden="true">＋</span> Add tracing image
+              <span aria-hidden="true">＋</span> Upload Image
             </label>
             <input id="traceInput" class="visually-hidden" type="file" accept="image/*" />
+            <button class="text-button" id="learnReferenceButton" type="button" hidden>
+              Learn to Draw This
+            </button>
             <button class="text-button make-traceable-button" id="makeTraceableButton" type="button" hidden>
               Make It Traceable
             </button>
@@ -253,9 +295,28 @@
             </div>
           </section>
 
-          <button class="clear-button" id="clearButton" type="button">
-            <span aria-hidden="true">⌫</span> Clear canvas
-          </button>
+          <details class="clear-menu" id="clearMenu">
+            <summary>Clear</summary>
+            <div class="clear-menu-panel">
+              <button class="layer-action-button" id="clearActiveLayerButton" type="button">
+                Clear Active Layer
+              </button>
+              <button class="layer-action-button" id="clearAllArtworkButton" type="button">
+                Clear All Artwork
+              </button>
+              <div class="clear-confirmation" id="clearConfirmation" hidden>
+                <p>Clear every unlocked layer? Locked layers and references will stay.</p>
+                <div>
+                  <button class="layer-action-button" id="confirmClearAllArtworkButton" type="button">
+                    Yes, Clear Artwork
+                  </button>
+                  <button class="layer-action-button" id="cancelClearAllArtworkButton" type="button">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </details>
         </aside>
 
         <section class="canvas-area" aria-label="Drawing canvas">
@@ -278,6 +339,7 @@
               <div class="canvas-paper" id="canvasPaper">
                 <img id="traceImage" class="trace-image" alt="Tracing reference" hidden />
                 <div id="tracingGridOverlay" class="tracing-grid-overlay" aria-hidden="true" hidden></div>
+                <canvas id="lessonGuideCanvas" class="lesson-guide-canvas" width="1200" height="800" aria-hidden="true"></canvas>
                 <canvas id="drawingCanvas" width="1200" height="800" aria-label="Blank drawing canvas. Use a pointer to draw.">
                   Your browser does not support canvas drawing.
                 </canvas>
@@ -298,6 +360,46 @@
           </details>
         </section>
       </main>
+      <section class="learn-workspace" id="learnWorkspace" aria-labelledby="learnWorkspaceTitle" hidden>
+        <div class="learn-workspace-header">
+          <div>
+            <span class="eyebrow">GUIDED PRACTICE</span>
+            <h2 id="learnWorkspaceTitle">Learn to Draw</h2>
+            <p id="learnWorkspaceDescription">Choose an original starter lesson or learn from an image in My Images.</p>
+          </div>
+        </div>
+        <div class="lesson-catalog" id="lessonCatalog" aria-label="Starter drawing lessons"></div>
+        <section class="active-lesson" id="activeLesson" aria-live="polite" hidden>
+          <div class="lesson-progress-heading">
+            <div>
+              <span class="eyebrow" id="lessonProgressText">Step 1 of 6</span>
+              <h3 id="lessonStageHeading">Observe</h3>
+            </div>
+            <progress id="lessonProgressBar" max="6" value="1" aria-label="Lesson progress"></progress>
+          </div>
+          <p class="lesson-instruction" id="lessonInstruction"></p>
+          <p class="lesson-hint" id="lessonHint" hidden></p>
+          <div class="lesson-stage-actions">
+            <button class="layer-action-button" id="showOriginalButton" type="button">Show Original</button>
+            <button class="layer-action-button" id="showConstructionGuidesButton" type="button" hidden>Show Construction Guides</button>
+            <button class="layer-action-button" id="showMainOutlineButton" type="button" hidden>Show Main Outline</button>
+            <button class="layer-action-button" id="showDetailedOutlineButton" type="button" hidden>Show Detailed Outline</button>
+            <button class="layer-action-button" id="hideLessonReferenceButton" type="button">Hide Reference</button>
+          </div>
+          <div class="lesson-navigation">
+            <button class="layer-action-button" id="previousLessonStepButton" type="button">Previous</button>
+            <div class="lesson-secondary-actions">
+              <button class="layer-action-button" id="toggleLessonHintButton" type="button">Show Hint</button>
+              <button class="layer-action-button" id="saveLessonProgressButton" type="button">Save Progress</button>
+              <button class="layer-action-button" id="resetLessonButton" type="button">Reset Lesson</button>
+              <button class="layer-action-button" id="exitLessonButton" type="button">Exit Lesson</button>
+            </div>
+            <button class="button button-primary" id="nextLessonStepButton" type="button">Next</button>
+            <button class="button button-primary" id="finishLessonButton" type="button" hidden>Finish Lesson</button>
+          </div>
+          <p class="lesson-completion-message" id="lessonCompletionMessage" role="status" aria-live="polite" hidden></p>
+        </section>
+      </section>
       <section class="tracing-workbench" id="tracingWorkbench" aria-labelledby="tracingDialogTitle" hidden>
         <div class="tracing-workbench-header">
           <div>
@@ -373,4 +475,9 @@
     </div>
     <script type="module" src="./browser-build/main.js"></script>
   </body>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    }
+  </script>
 </html>

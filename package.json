@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run compile && vite",
     "compile": "tsc -p tsconfig.browser.json",
-    "build": "tsc -b && npm run compile && vite build",
+    "build": "tsc -b && npm run compile && vite build --base=./",
     "test": "npm run compile && node --test",
     "preview": "vite preview"
   },
